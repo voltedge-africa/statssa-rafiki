@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rafiki-auth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rafiki
+      POSTGRES_PASSWORD: rafiki
+      POSTGRES_DB: rafiki_auth
+    # Bind to loopback only: the auth server runs on this host, and this keeps the DB off
+    # the tailnet / LAN.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - rafiki-auth-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rafiki -d rafiki_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rafiki-auth-postgres:

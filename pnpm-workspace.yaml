@@ -12,3 +12,5 @@ packages:
   - packages/*
   - apps/*
   - tools/*
+allowBuilds:
+  esbuild: true

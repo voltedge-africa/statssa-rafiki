@@ -11,6 +11,12 @@
   "scripts": {
     "ready": "vp fmt && vp lint && vp run test -r && vp run build -r",
     "dev": "vp run website#dev",
+    "dev:auth": "vp run auth#server",
+    "db:up": "vp run auth#db:up",
+    "db:down": "vp run auth#db:down",
+    "db:generate": "vp run auth#db:generate",
+    "db:migrate": "vp run auth#db:migrate",
+    "db:push": "vp run auth#db:push",
     "prepare": "vp config"
   },
   "devDependencies": {
