@@ -1,20 +1,24 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "lib": ["es2023"],
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "moduleDetection": "force",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
     "resolveJsonModule": true,
-    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
     "strict": true,
     "noUnusedLocals": true,
-    "declaration": true,
+    "noUnusedParameters": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "skipLibCheck": true
-  }
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
 }

@@ -4,8 +4,10 @@ import { issuer } from "@openauthjs/openauth";
 import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { MemoryStorage } from "@openauthjs/openauth/storage/memory";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
+import { createTransport } from "nodemailer";
 import { withRole } from "./register-ui.ts";
 import { subjects } from "./subjects.ts";
+import { theme } from "./theme.ts";
 import { getUser } from "./users.ts";
 
 const persistFile = resolve(dirname(fileURLToPath(import.meta.url)), "../.openauth-persist.json");
@@ -39,20 +41,75 @@ function isAllowed(redirectURI: string, req: Request) {
   return allowedHosts.includes(new URL(redirectURI).host);
 }
 
-// Replace with a real email send. Until then the verification code is printed to this process's
-// console so you can complete registration/login in development.
+const smtpUser = process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS;
+
+const mailer = createTransport({
+  host: process.env.SMTP_HOST ?? "sandbox.smtp.mailtrap.io",
+  port: Number(process.env.SMTP_PORT ?? 2525),
+  auth: {
+    user: smtpUser,
+    pass: smtpPass,
+  },
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 15_000,
+});
+
 async function sendCode(email: string, code: string) {
-  console.log(`\n[auth] verification code for ${email}: ${code}\n`);
+  if (!smtpUser || !smtpPass) {
+    console.log(`\n[auth] verification code for ${email}: ${code}\n`);
+    return;
+  }
+
+  try {
+    const info = await mailer.sendMail({
+      from: process.env.SMTP_FROM ?? "Stats SA Rafiki <no-reply@statssa.gov.za>",
+      to: email,
+      subject: "Your Stats SA Rafiki verification code",
+      text: `Your verification code is ${code}. It expires in 10 minutes.`,
+    });
+
+    console.log(`[auth] verification code sent to ${email}: ${info.messageId}`);
+  } catch (error) {
+    console.error(`[auth] could not email ${email}; falling back to console`, error);
+    console.log(`\n[auth] verification code for ${email}: ${code}\n`);
+  }
 }
 
 const passwordUI = PasswordUI({
   sendCode,
   validatePassword: (password) =>
     password.length < 8 ? "Password must be at least 8 characters" : undefined,
+  copy: {
+    register_title: "Create your account",
+    register_description: "Register with your Stats SA email address to continue.",
+    register: "Create account",
+    register_prompt: "New to Rafiki?",
+    login_title: "Welcome back",
+    login_description: "Sign in with your Stats SA email address.",
+    login: "Sign in",
+    login_prompt: "Already registered?",
+    change_prompt: "Forgot your password?",
+    input_email: "Work email",
+    input_password: "Password",
+    input_repeat: "Repeat password",
+    input_code: "Verification code",
+    button_continue: "Continue",
+    code_resend: "Resend code",
+    code_return: "Back to",
+    error_email_taken: "An account with this email already exists.",
+    error_invalid_code: "That code is not right. Check your email and try again.",
+    error_invalid_email: "Enter a valid email address.",
+    error_invalid_password: "That email and password do not match.",
+    error_password_mismatch: "The passwords do not match.",
+    error_validation_error: "Please choose a stronger password.",
+  },
 });
 
 export default issuer({
   subjects,
+  theme,
   // Dev-only persistence so accounts and signing keys survive a restart.
   // For production pass a durable adapter (DynamoDB, Cloudflare KV), either here or via the
   // OPENAUTH_STORAGE env var, which the issuer reads and lets override this value.

@@ -10,10 +10,20 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
+    "@voltedge/ui": "workspace:*",
+    "lucide-react": "^1.46.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@types/node": "^22.20.3",
+    "@storybook/react": "^10.6.0",
+    "@tailwindcss/vite": "^4",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6",
+    "tailwindcss": "^4",
     "typescript": "~6.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
