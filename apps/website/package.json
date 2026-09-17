@@ -8,7 +8,12 @@
     "build": "tsc && vp build",
     "preview": "vp preview"
   },
+  "dependencies": {
+    "@openauthjs/openauth": "^0.4.3",
+    "valibot": "^1.5.0"
+  },
   "devDependencies": {
+    "@types/node": "^22.20.3",
     "typescript": "~6.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
