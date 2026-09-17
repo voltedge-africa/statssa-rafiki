@@ -18,8 +18,8 @@
     "vite-plus": "catalog:"
   },
   "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+    "vite": "@voidzero-dev/vite-plus-core@latest",
+    "vitest": "@voidzero-dev/vite-plus-test@latest"
   },
   "engines": {
     "node": ">=22.12.0"
