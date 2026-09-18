@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
+    "@voltedge/agent-contract": "workspace:*",
     "@voltedge/auth-contract": "workspace:*",
     "@voltedge/media-contract": "workspace:*",
     "@voltedge/media-ui": "workspace:*",

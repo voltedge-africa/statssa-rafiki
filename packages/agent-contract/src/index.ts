@@ -114,7 +114,11 @@ export interface RecordedTelemetryEvent {
 /** A settled or in-flight span as returned by the telemetry stream. */
 export interface RecordedSpan {
   id: number;
+  /** Stable, globally-unique id for this span; survives process restarts. */
+  uid: string;
   parentId: number | null;
+  /** Stable id of the parent span, or null for a root span. */
+  parentUid: string | null;
   name: string;
   attributes: Record<string, unknown>;
   events: RecordedTelemetryEvent[];
@@ -136,6 +140,133 @@ export interface TelemetrySummary {
   tokensOut: number;
   cost: number;
   avgMs: number;
+}
+
+/**
+ * Governance vocabulary for the persisted AI telemetry (`ai_spans`).
+ *
+ * These shapes are intentionally free of prompt, completion and tool-output
+ * content: the pipeline only records what the model did, which tools it used,
+ * and how the call performed.
+ */
+
+/** Coarse classification of a recorded span. */
+export type AiSpanKind = "turn" | "model_request" | "tool" | "other";
+
+/** One persisted `pi.ai.request` span, flattened for governance queries. */
+export interface AiModelCall {
+  spanUid: string;
+  parentUid: string | null;
+  sessionId: string | null;
+  feature: string | null;
+  clientRole: string | null;
+  clientOrigin: string | null;
+  provider: string | null;
+  model: string | null;
+  responseModel: string | null;
+  operation: string | null;
+  stopReason: string | null;
+  status: SpanStatus;
+  errorMessage: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  reasoningTokens: number | null;
+  totalTokens: number | null;
+  costUsd: number | null;
+  chunkCount: number | null;
+  timeToFirstChunkMs: number | null;
+  durationMs: number | null;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+/** One persisted tool-execution span, flattened for governance queries. */
+export interface AiToolCall {
+  spanUid: string;
+  parentUid: string | null;
+  sessionId: string | null;
+  feature: string | null;
+  clientRole: string | null;
+  toolName: string | null;
+  toolCallId: string | null;
+  toolIsError: boolean | null;
+  status: SpanStatus;
+  errorMessage: string | null;
+  durationMs: number | null;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+/** One persisted span as returned by the session trace view. */
+export interface AiSessionSpan {
+  spanUid: string;
+  parentUid: string | null;
+  sessionId: string | null;
+  name: string;
+  kind: AiSpanKind;
+  feature: string | null;
+  clientRole: string | null;
+  provider: string | null;
+  model: string | null;
+  operation: string | null;
+  toolName: string | null;
+  toolCallId: string | null;
+  toolIsError: boolean | null;
+  status: SpanStatus;
+  errorMessage: string | null;
+  durationMs: number | null;
+  startedAt: string;
+  endedAt: string | null;
+  attributes: Record<string, unknown>;
+  events: unknown[];
+}
+
+/** Paginated governance rows plus the total matching the filters. */
+export interface AiPage<T> {
+  items: T[];
+  total: number;
+}
+
+/** Filters accepted by the admin AI telemetry endpoints. */
+export interface AiUsageFilters {
+  /** Inclusive ISO date-time lower bound on `started_at`. */
+  from?: string;
+  /** Exclusive ISO date-time upper bound on `started_at`. */
+  to?: string;
+  model?: string;
+  feature?: string;
+  role?: string;
+  tool?: string;
+  sessionId?: string;
+}
+
+/** Aggregate rollup over model-request spans. */
+export interface AiUsageTotals {
+  requests: number;
+  toolCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  avgDurationMs: number;
+  errorCount: number;
+}
+
+/** A single named bucket in a usage rollup. */
+export interface AiUsageBucket extends AiUsageTotals {
+  key: string;
+}
+
+/** Governance rollup returned by `GET /admin/ai/usage`. */
+export interface AiUsageSummary {
+  totals: AiUsageTotals;
+  byModel: AiUsageBucket[];
+  byTool: AiUsageBucket[];
+  byFeature: AiUsageBucket[];
+  byRole: AiUsageBucket[];
+  byDay: AiUsageBucket[];
 }
 
 /* -------------------------------------------------------------------------- */

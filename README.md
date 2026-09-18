@@ -2,18 +2,18 @@
 
 A Vite+ monorepo for the STATSSA Rafiki auth stack.
 
-| App                   | What it is                                                                                                                                                                         | Stack                                      |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `apps/auth`           | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`.                                     | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
-| `apps/api`            | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification, role guards and the POPIA request desk.                                                | NestJS (Express), pgvector, Vitest, Oxc    |
-| `apps/website`        | The public front-end. Signs users in through the issuer, serves the POPIA request desk at `/popia` (footer links only), and sends Staff/Admin to the control centre after sign-in. | Vite (React SPA), Node middleware          |
-| `apps/public-portal`  | The public chat portal on port 3003. Answers statistics questions from the API's RAG corpus. Linked from the website hero.                                                         | Vite (React SPA)                           |
-| `apps/media-portal`   | The media room on port 3004. Signed-in users file fact-check requests, watch them move through human review and read the approved, referenced response.                            | Vite (React SPA), Node middleware          |
-| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer, works the POPIA case queue and reviews media fact-check drafts on the media desk.                             | Vite (React SPA), Node middleware          |
+| App                   | What it is                                                                                                                                                                          | Stack                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `apps/auth`           | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`.                                      | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
+| `apps/api`            | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification, role guards, the POPIA request desk and durable AI telemetry.                           | NestJS (Express), pgvector, Vitest, Oxc    |
+| `apps/website`        | The public front-end. Signs users in through the issuer, serves the POPIA request desk at `/popia` (footer links only), and sends Staff/Admin to the control centre after sign-in.  | Vite (React SPA), Node middleware          |
+| `apps/public-portal`  | The public chat portal on port 3003. Answers statistics questions from the API's RAG corpus. Linked from the website hero.                                                          | Vite (React SPA)                           |
+| `apps/media-portal`   | The media room on port 3004. Signed-in users file fact-check requests, watch them move through human review and read the approved, referenced response.                             | Vite (React SPA), Node middleware          |
+| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer, works the POPIA case queue, reviews media fact-check drafts and (Admins only) queries AI governance telemetry. | Vite (React SPA), Node middleware          |
 
 Users register with one of three roles — **Press**, **Staff**, **Admin**. After signing in, **Press** lands on `/press`; **Staff** and **Admin** are redirected to the control centre (port 3006).
 
-The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums. The media vocabulary (fact-check statuses, lifecycle, draft and view shapes) lives once in [`packages/media-contract`](packages/media-contract) and is shared by the API, media portal, control centre and database enums.
+The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums. The media vocabulary (fact-check statuses, lifecycle, draft and view shapes) lives once in [`packages/media-contract`](packages/media-contract) and is shared by the API, media portal, control centre and database enums. The agent vocabulary (chat events, UI blocks and AI telemetry spans) lives once in [`packages/agent-contract`](packages/agent-contract) and is shared by the API, the chat surfaces and the control centre's AI governance view.
 
 ---
 
@@ -23,7 +23,11 @@ The token shape and roles live once in [`packages/auth-contract`](packages/auth-
   ```bash
   curl -fsSL https://vite.plus | bash
   ```
-- **Docker + Docker Compose** — runs the Postgres container.
+- **Docker + Docker Compose** — runs Postgres and Mailpit.
+- **Bun** — runs the auth issuer.
+  ```bash
+  curl -fsSL https://bun.sh/install | bash
+  ```
 - **Node.js >= 22.12.0** (declared in `engines`). `vp` can manage the runtime for you.
 
 Verify:
@@ -31,6 +35,7 @@ Verify:
 ```bash
 vp --version
 docker compose version
+bun --version
 ```
 
 ---
@@ -43,10 +48,10 @@ Run these once after cloning (and after pulling changes that touch dependencies 
 # 1. Install all workspace dependencies
 vp install
 
-# 2. Start Postgres (apps/auth/docker-compose.yml, bound to 127.0.0.1:5432)
+# 2. Start Postgres and Mailpit (apps/auth/docker-compose.yml, bound to 127.0.0.1)
 vp run db:up
 
-# 3. Apply the Drizzle migrations (creates the `users` table, `role` enum and the POPIA tables)
+# 3. Apply the Drizzle migrations (creates the `users` table, `role` enum and the POPIA and media tables)
 vp run db:migrate
 
 # 4. (Optional, for the API's grounded answers) cache the embedding model and index the corpus
@@ -64,6 +69,7 @@ The defaults work for local development. Copy the examples only if you need to o
 cp apps/auth/.env.example apps/auth/.env
 cp apps/api/.env.example apps/api/.env
 cp apps/website/.env.example apps/website/.env
+cp apps/public-portal/.env.example apps/public-portal/.env
 cp apps/media-portal/.env.example apps/media-portal/.env
 cp apps/control-centre/.env.example apps/control-centre/.env
 ```
@@ -87,7 +93,16 @@ cp apps/control-centre/.env.example apps/control-centre/.env
 
 ## Run
 
-Six long-running processes, in six terminals, from the repo root:
+Bring the whole system up from the repo root:
+
+```bash
+vp install          # once, and after any pull that changes dependencies
+vp run db:up        # Postgres + Mailpit
+vp run db:migrate   # users, POPIA and media tables
+vp run dev:all      # auth 3000, api 3001, web 3002, public 3003, media 3004, control 3006
+```
+
+Or run the six processes separately, in six terminals, from the repo root:
 
 ```bash
 # terminal 1 — auth issuer on http://localhost:3000
@@ -109,17 +124,10 @@ vp run dev:media
 vp run dev:control
 ```
 
-Or run everything in one terminal with labelled, interleaved output:
-
-```bash
-vp run dev:all
-```
-
-That prebuilds the shared packages and then runs the auth issuer, API, website, public portal,
-media room and control centre together with
-[`concurrently`](https://github.com/open-cli-tools/concurrently).
-**Ctrl+C stops all six**; don't kill the individual processes, as their children (Bun, Nest) can
-outlive them.
+`vp run dev:all` prebuilds the shared packages and runs all six together with
+[`concurrently`](https://github.com/open-cli-tools/concurrently), with labelled, interleaved
+output. **Ctrl+C stops all six**; don't kill the individual processes, as their children (Bun,
+Nest) can outlive them.
 
 Open <http://localhost:3002> and click **Sign in or register**. POPIA requests live at
 <http://localhost:3002/popia> and are linked from the footer. Staff and Admin sign in to the
@@ -199,6 +207,13 @@ picking the next free one.
 Postgres (5432) and Mailpit (1025 SMTP, 8025 UI) stay on their standard ports and bind to
 `127.0.0.1` only.
 
+The research portal (3005) and Storybook (3007) are not part of `dev:all`; start them on demand:
+
+```bash
+vp -C apps/research-portal dev
+vp -C apps/storybook dev
+```
+
 ### Accessing over Tailscale
 
 All dev servers listen on all interfaces, so from another machine on your tailnet open:
@@ -213,6 +228,8 @@ http://<hostname>:3006     # control centre (and /media)
 
 e.g. `http://armomarchy.taild8f6b9.ts.net:3002`. The website, the control centre and the API derive the issuer URL from the hostname you used (`http://<hostname>:3000`), so no config is needed. The database stays bound to `127.0.0.1` and is **not** exposed to the tailnet.
 
+> The public portal calls the API from the browser, so when using the chat from another tailnet machine set `VITE_API_BASE=http://<hostname>:3001` in `apps/public-portal/.env` (its default, `http://localhost:3001`, would point at the browser's own machine).
+
 ---
 
 ## Database
@@ -221,8 +238,8 @@ The dev database is defined in [`apps/auth/docker-compose.yml`](apps/auth/docker
 
 | Command              | Does                                                        |
 | -------------------- | ----------------------------------------------------------- |
-| `vp run db:up`       | Start Postgres (`docker compose up -d`).                    |
-| `vp run db:down`     | Stop Postgres (keeps data).                                 |
+| `vp run db:up`       | Start Postgres and Mailpit (`docker compose up -d`).        |
+| `vp run db:down`     | Stop them (keeps data).                                     |
 | `vp run db:migrate`  | Apply committed migrations.                                 |
 | `vp run db:generate` | Generate a migration after editing the schema.              |
 | `vp run db:push`     | Push the schema directly (dev shortcut; no migration file). |
@@ -300,29 +317,39 @@ docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_rag
 `Authorization: Bearer <access token>` header; the token is verified against the issuer's JWKS and
 its subject (`{ id, role }`) is validated against the shared contract.
 
-| Route                                        | Access        | Returns                                                |
-| -------------------------------------------- | ------------- | ------------------------------------------------------ |
-| `GET /health`                                | public        | `{ status, uptime }`                                   |
-| `GET /me`                                    | any role      | the caller's subject                                   |
-| `GET /admin/ping`                            | Admin         | role-guard example                                     |
-| `POST /popia/requests`                       | public        | submit a request; a token links it to account          |
-| `POST /popia/requests/track`                 | public        | track by reference + email                             |
-| `GET /popia/requests/mine`                   | any role      | requests linked to the caller                          |
-| `GET /popia/requests`                        | Staff, Admin  | case queue (`status`, `type`, `assigned`, `q`)         |
-| `GET /popia/requests/:reference`             | Staff, Admin  | case file with the full timeline                       |
-| `PATCH /popia/requests/:reference`           | Staff, Admin  | status, assignment or resolution                       |
-| `POST /popia/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                     |
-| `POST /media/requests`                       | any signed-in | submit a media fact-check request (starts AI drafting) |
-| `GET /media/requests/mine`                   | any signed-in | the caller's media requests                            |
-| `GET /media/requests/mine/:reference`        | owner         | request tracking plus the approved response            |
-| `POST /media/requests/:reference/withdraw`   | owner         | withdraw an open request                               |
-| `GET /media/requests`                        | Staff, Admin  | media queue (`status`, `assigned`, `q`)                |
-| `GET /media/requests/:reference`             | Staff, Admin  | media case file including the AI draft                 |
-| `PATCH /media/requests/:reference`           | Staff, Admin  | status, assignment or a lifecycle note                 |
-| `POST /media/requests/:reference/approve`    | Staff, Admin  | approve and release the reviewed response              |
-| `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                |
-| `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                             |
-| `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                     |
+| Route                                        | Access        | Returns                                                                                  |
+| -------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
+| `GET /health`                                | public        | `{ status, uptime }`                                                                     |
+| `GET /me`                                    | any role      | the caller's subject                                                                     |
+| `GET /admin/ping`                            | Admin         | role-guard example                                                                       |
+| `POST /popia/requests`                       | public        | submit a request; a token links it to account                                            |
+| `POST /popia/requests/track`                 | public        | track by reference + email                                                               |
+| `GET /popia/requests/mine`                   | any role      | requests linked to the caller                                                            |
+| `GET /popia/requests`                        | Staff, Admin  | case queue (`status`, `type`, `assigned`, `q`)                                           |
+| `GET /popia/requests/:reference`             | Staff, Admin  | case file with the full timeline                                                         |
+| `PATCH /popia/requests/:reference`           | Staff, Admin  | status, assignment or resolution                                                         |
+| `POST /popia/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                       |
+| `POST /media/requests`                       | any signed-in | submit a media fact-check request (starts AI drafting)                                   |
+| `GET /media/requests/mine`                   | any signed-in | the caller's media requests                                                              |
+| `GET /media/requests/mine/:reference`        | owner         | request tracking plus the approved response                                              |
+| `POST /media/requests/:reference/withdraw`   | owner         | withdraw an open request                                                                 |
+| `GET /media/requests`                        | Staff, Admin  | media queue (`status`, `assigned`, `q`)                                                  |
+| `GET /media/requests/:reference`             | Staff, Admin  | media case file including the AI draft                                                   |
+| `PATCH /media/requests/:reference`           | Staff, Admin  | status, assignment or a lifecycle note                                                   |
+| `POST /media/requests/:reference/approve`    | Staff, Admin  | approve and release the reviewed response                                                |
+| `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                                                  |
+| `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                                                               |
+| `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                       |
+| `GET /api/status`                            | public        | provider/model availability                                                              |
+| `POST /api/chat`                             | public        | SSE chat stream (optional auth tags the portal role)                                     |
+| `POST /api/reset`                            | public        | forget a chat session                                                                    |
+| `GET /api/telemetry`                         | Admin         | live in-memory spans (snapshot)                                                          |
+| `GET /api/telemetry/stream`                  | Admin         | live in-memory spans (SSE)                                                               |
+| `POST /api/telemetry/clear`                  | Admin         | clear the in-memory span buffer                                                          |
+| `GET /admin/ai/usage`                        | Admin         | AI model governance rollup (`from`, `to`, `model`, `feature`, `role`, `tool`, `session`) |
+| `GET /admin/ai/model-calls`                  | Admin         | paginated model calls (`limit`, `offset` + filters)                                      |
+| `GET /admin/ai/tool-calls`                   | Admin         | paginated tool calls (`limit`, `offset` + filters)                                       |
+| `GET /admin/ai/sessions/:sessionId`          | Admin         | every persisted span for one session                                                     |
 
 - The issuer URL is derived from the request host and `AUTH_PORT`, so it works locally and over a
   tailnet. Set `AUTH_ISSUER` to override; it is required in production.
@@ -331,6 +358,21 @@ its subject (`{ id, role }`) is validated against the shared contract.
 - Guards: `@Public()` opts a route out of auth, `@OptionalAuth()` treats a missing token as
   anonymous but still verifies one that is present, `@Roles("Admin")` restricts a route, and
   `@CurrentUser()` injects the verified subject.
+
+### AI telemetry and model governance
+
+Every AI call is instrumented through pi's `TelemetryContext` (`apps/api/src/agent/telemetry.service.ts`).
+Settled spans are flattened and persisted by `telemetry.persistence.ts` into the `ai_spans` table in
+the auth database, alongside the POPIA and media tables. Admins query the `ai_model_usage` and
+`ai_tool_usage` views (or the `/admin/ai/*` endpoints) to see which models and tools are being used,
+token and cost totals, latency and error rates.
+
+Recording is deliberately non-verbose and POPIA-conscious: spans hold model/provider/operation
+metadata, tool names, token counts, cost, latency and status, but never prompt, completion or
+tool-output content, and never the user's identity. Each row is tagged with the originating feature
+(`chat`, `media_draft`) and portal role (`Press`, `Staff`, `Admin`, `anonymous`) only. The live
+`/api/telemetry` buffer is Admin-only because it spans all sessions and `clear` mutates shared state;
+retention/pruning is intentionally not implemented yet (the `created_at` column is indexed for it).
 
 ---
 
@@ -350,6 +392,12 @@ The **case queue** lives in `apps/control-centre` (port 3006), the Staff/Admin w
 workers move requests through the lifecycle (submitted → acknowledged → in review ⇄ awaiting
 information → completed/rejected/withdrawn), assign cases, record a resolution and add internal or
 requester-visible notes. Every change appends to the audit trail.
+
+**AI Governance** is an Admin-only area of the control centre (`/ai` → Telemetry). It queries the
+persisted `ai_spans` telemetry in `rafiki_auth` and shows model/tool usage, token and cost totals,
+latency, error rates, per-day breakdowns and a per-session span trace, filterable by date, model,
+tool, surface and portal role. The view uses the control centre's shared `@voltedge/ui` components
+and reads through `/api/admin/ai/*`, which the Vite middleware proxies with the session token.
 
 Neither app exposes tokens to the browser: their Vite middleware runs the OpenAuth flow with
 httpOnly cookies and proxies `/api/popia/*` to `apps/api` with the session token attached. POPIA
@@ -421,9 +469,11 @@ apps/
     src/
       main.ts         # bootstrap: env, CORS, listen
       app.module.ts   # wires AuthModule + controllers
-      admin/          # role-guarded example controller
+      admin/          # role-guarded ping + AI governance (usage / model / tool / session)
       auth/           # JWKS verification, guards, decorators
+      agent/          # agent runtime, pi telemetry capture + persistence, RAG, admin queries
       popia/          # POPIA repository, service, controller
+      media/          # media fact-check repository, service, AI draft service, controller
     test/             # Vitest e2e specs (supertest)
   website/
     server/auth.ts    # OAuth flow, session cookies, /api/popia proxy, 404
@@ -436,10 +486,11 @@ apps/
     src/App.tsx       # media room routing
     src/views/        # home, file a request, my requests, tracking
   control-centre/
-    server/auth.ts    # OAuth flow, session cookies, /api/popia and /api/media proxy
+    server/auth.ts    # OAuth flow, session cookies, /api/popia, /api/media and /api/admin/ai proxy
     src/main.tsx      # Staff/Admin workspace
-    src/views/        # POPIA case queue and media fact-check queue
+    src/views/        # POPIA case queue, media fact-check queue and AI governance telemetry
 packages/
+  agent-contract/     # chat events, UI blocks and AI telemetry spans (shared)
   auth-contract/      # roles + access-token subject schema (shared)
   popia-contract/     # POPIA types, statuses, schemas and view shapes (shared)
   popia-ui/           # POPIA API client and request components (shared)

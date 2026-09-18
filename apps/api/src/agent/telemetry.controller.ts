@@ -1,11 +1,15 @@
 import { Controller, Get, HttpCode, Post, Res } from "@nestjs/common";
 import type { Response } from "express";
 import type { TelemetryStoreEvent } from "@voltedge/agent-contract";
-import { Public } from "../auth/public.decorator.ts";
+import { Roles } from "../auth/roles.decorator.ts";
 import { TelemetryService } from "./telemetry.service.ts";
 
+/**
+ * Live, in-memory telemetry for operators. Admin-only: it exposes model
+ * operation metadata across all sessions, and `clear` mutates shared state.
+ */
 @Controller("api/telemetry")
-@Public()
+@Roles("Admin")
 export class TelemetryController {
   constructor(private readonly telemetry: TelemetryService) {}
 

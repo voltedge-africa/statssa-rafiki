@@ -110,6 +110,7 @@ export class MediaDraftService {
     const { text, model, error } = await this.agent.complete({
       system: MEDIA_DRAFT_SYSTEM_PROMPT,
       user: buildUserPrompt(claim, context, guidance, formatHits(hits)),
+      feature: "media_draft",
     });
 
     if (error) {

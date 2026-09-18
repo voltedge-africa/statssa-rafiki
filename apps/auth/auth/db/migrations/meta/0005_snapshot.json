@@ -1,6 +1,6 @@
 {
-  "id": "7e0a2012-c06e-4c14-9eb2-c98772f4b1e1",
-  "prevId": "48f02a04-06af-4a8a-bb41-cebec22391d9",
+  "id": "f564d26c-a61c-4e27-980e-1aa78b1e92fa",
+  "prevId": "7e0a2012-c06e-4c14-9eb2-c98772f4b1e1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -696,6 +696,12 @@
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewer_guidance": {
+          "name": "reviewer_guidance",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }

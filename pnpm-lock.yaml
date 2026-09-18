@@ -321,6 +321,9 @@ importers:
       '@openauthjs/openauth':
         specifier: ^0.4.3
         version: 0.4.3(arctic@2.3.4)(hono@4.13.8)
+      '@voltedge/agent-contract':
+        specifier: workspace:*
+        version: link:../../packages/agent-contract
       '@voltedge/auth-contract':
         specifier: workspace:*
         version: link:../../packages/auth-contract

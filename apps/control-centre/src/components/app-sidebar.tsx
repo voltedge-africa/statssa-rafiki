@@ -1,4 +1,4 @@
-import { ClipboardList, ExternalLink, LogOut, Newspaper } from "lucide-react";
+import { ClipboardList, ExternalLink, LogOut, Newspaper, ShieldCheck } from "lucide-react";
 
 import {
   Sidebar,
@@ -20,8 +20,9 @@ import { usePath } from "../lib/router.ts";
 import { useSession } from "../lib/session.tsx";
 
 export function AppSidebar() {
-  const { signOut } = useSession();
+  const { session, signOut } = useSession();
   const path = usePath();
+  const admin = session?.role === "Admin";
 
   return (
     <Sidebar collapsible="icon">
@@ -79,6 +80,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {admin ? (
+          <SidebarGroup>
+            <SidebarGroupLabel>AI Governance</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={path === "/ai"}
+                    tooltip="Telemetry"
+                    render={<a href="/ai" />}
+                  >
+                    <ShieldCheck />
+                    <span>Telemetry</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
 
       <SidebarFooter>

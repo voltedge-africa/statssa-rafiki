@@ -6,6 +6,7 @@ import { AppSidebar } from "./components/app-sidebar.tsx";
 import { mediaPortalUrl, websiteUrl } from "./lib/env.ts";
 import { caseReferenceFromPath, mediaReferenceFromPath, usePath } from "./lib/router.ts";
 import { useSession } from "./lib/session.tsx";
+import { AiTelemetryView } from "./views/ai-telemetry-view.tsx";
 import { CaseQueueView } from "./views/case-queue-view.tsx";
 import { CaseRequestView } from "./views/case-request-view.tsx";
 import { MediaQueueView } from "./views/media-queue-view.tsx";
@@ -42,6 +43,17 @@ export function App() {
   const mediaReference = mediaReferenceFromPath(path);
   const caseReference = caseReferenceFromPath(path);
   const onMediaDesk = path === "/media" || mediaReference !== null;
+  const onAiGovernance = path === "/ai";
+
+  const title = onMediaDesk ? "Media desk" : onAiGovernance ? "AI Governance" : "POPIA case queue";
+  const subtitle =
+    mediaReference ??
+    caseReference ??
+    (onMediaDesk
+      ? "media fact-check review"
+      : onAiGovernance
+        ? "model & tool telemetry"
+        : "staff & admin workspace");
 
   return (
     <SidebarProvider>
@@ -50,14 +62,8 @@ export function App() {
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border px-4">
           <SidebarTrigger className="-ml-1" />
           <div className="flex flex-col">
-            <span className="font-heading text-sm font-medium">
-              {onMediaDesk ? "Media desk" : "POPIA case queue"}
-            </span>
-            <span className="font-mono text-[10px] text-muted-foreground">
-              {mediaReference ??
-                caseReference ??
-                (onMediaDesk ? "media fact-check review" : "staff & admin workspace")}
-            </span>
+            <span className="font-heading text-sm font-medium">{title}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">{subtitle}</span>
           </div>
         </header>
 
@@ -68,6 +74,8 @@ export function App() {
             <MediaQueueView />
           ) : caseReference ? (
             <CaseRequestView reference={caseReference} />
+          ) : onAiGovernance ? (
+            <AiTelemetryView />
           ) : (
             <CaseQueueView />
           )}
