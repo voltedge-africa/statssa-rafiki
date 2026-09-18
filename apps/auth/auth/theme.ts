@@ -13,21 +13,45 @@ export const theme: Theme = {
   primary: "#1082ff",
   background: "oklch(1 0 0)",
   font: {
-    family: "'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif",
+    family: "'Archivo Variable', Archivo, system-ui, sans-serif",
   },
   css: `
-    @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,100..900;1,100..900&display=swap');
 
     :root {
       color-scheme: light !important;
     }
 
     html {
-      --border-radius: 2.5 !important;
+      --border-radius: 1.5 !important;
     }
 
     [data-component="button"] {
       font-weight: 600;
+    }
+
+    [data-component="provider-list"] {
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+    }
+
+    [data-component="provider-label"] {
+      color: var(--color-high);
+      font-size: var(--font-size-xs);
+      opacity: 0.55;
+      text-align: center;
+    }
+
+    [data-component="provider-options"] {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+
+    [data-component="button"]:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
     }
   `,
 };

@@ -1,19 +1,5 @@
-import { Check } from "lucide-react";
-
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  Item,
-  ItemContent,
-  ItemDescription,
-  ItemMedia,
-  ItemTitle,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@voltedge/ui";
+import { Section } from "../components/section.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@voltedge/ui";
 
 const groups = [
   {
@@ -24,14 +10,14 @@ const groups = [
     capabilities: [
       {
         title: "Plain-language questions",
-        description: "No jargon, no forms — just ask.",
+        description: "No jargon, no forms. Just ask.",
       },
       {
         title: "Published sources only",
-        description: "Answers come from official publications, releases and datasets.",
+        description: "Answers come from official releases, datasets and publications.",
       },
       {
-        title: "References included",
+        title: "Sources included",
         description: "Every answer points to the documents it used.",
       },
       {
@@ -42,7 +28,7 @@ const groups = [
   },
   {
     value: "media",
-    label: "Media & statements",
+    label: "Media and statements",
     summary:
       "Prepare media queries and communication drafts from published information, ready for review.",
     capabilities: [
@@ -92,49 +78,41 @@ const groups = [
 
 export function Capabilities() {
   return (
-    <section id="capabilities" className="border-t border-border/60 py-16 sm:py-24">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 sm:px-6">
-        <div className="flex max-w-2xl flex-col gap-3">
-          <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-            Capabilities
-          </p>
-          <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-            What Rafiki helps with
-          </h2>
-        </div>
-
-        <Tabs defaultValue="ask">
-          <TabsList>
-            {groups.map((group) => (
-              <TabsTrigger key={group.value} value={group.value}>
-                {group.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+    <Section
+      id="capabilities"
+      label="what you can ask"
+      title="What Rafiki helps with"
+      description="Public questions, media work and consistent messaging across the organisation."
+    >
+      <Tabs defaultValue="ask">
+        <TabsList variant="line">
           {groups.map((group) => (
-            <TabsContent key={group.value} value={group.value}>
-              <Card>
-                <CardHeader>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{group.summary}</p>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-1">
-                  {group.capabilities.map((capability) => (
-                    <Item key={capability.title} variant="muted" size="sm">
-                      <ItemMedia variant="icon">
-                        <Check />
-                      </ItemMedia>
-                      <ItemContent>
-                        <ItemTitle>{capability.title}</ItemTitle>
-                        <ItemDescription>{capability.description}</ItemDescription>
-                      </ItemContent>
-                    </Item>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
+            <TabsTrigger key={group.value} value={group.value}>
+              {group.label}
+            </TabsTrigger>
           ))}
-        </Tabs>
-      </div>
-    </section>
+        </TabsList>
+        {groups.map((group) => (
+          <TabsContent key={group.value} value={group.value}>
+            <div className="flex flex-col gap-8 pt-6">
+              <p className="max-w-2xl leading-relaxed text-muted-foreground">{group.summary}</p>
+              <dl className="grid gap-x-16 sm:grid-cols-2">
+                {group.capabilities.map((capability) => (
+                  <div
+                    key={capability.title}
+                    className="flex flex-col gap-1.5 border-t border-border py-4"
+                  >
+                    <dt className="font-medium">{capability.title}</dt>
+                    <dd className="text-sm leading-relaxed text-muted-foreground">
+                      {capability.description}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </TabsContent>
+        ))}
+      </Tabs>
+    </Section>
   );
 }

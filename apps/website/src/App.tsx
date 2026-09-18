@@ -27,16 +27,18 @@ export function App() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-background">
-      <SiteHeader />
-      <main className="flex-1">
-        <Hero />
-        <HowItWorks />
-        <Capabilities />
-        <Governance />
-        <Faq />
-      </main>
-      <SiteFooter />
+    <div className="min-h-svh bg-background">
+      <div className="mx-auto flex min-h-svh w-full max-w-[1200px] flex-col border-x border-border">
+        <SiteHeader />
+        <main className="flex-1">
+          <Hero />
+          <HowItWorks />
+          <Capabilities />
+          <Governance />
+          <Faq />
+        </main>
+        <SiteFooter />
+      </div>
     </div>
   );
 }

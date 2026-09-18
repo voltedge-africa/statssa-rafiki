@@ -1,62 +1,49 @@
-import { BookOpenCheck, FileSearch, MessagesSquare, UserCheck } from "lucide-react";
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@voltedge/ui";
+import { Section } from "../components/section.tsx";
 
 const steps = [
   {
-    title: "Ask in your own words",
-    description: "Type a question the way you would say it — no jargon or form fields.",
-    icon: MessagesSquare,
+    title: "You ask",
+    body: "A question in plain language, about anything Stats SA publishes.",
   },
   {
-    title: "Only published sources",
-    description: "Rafiki looks through published Stats SA information, nothing else.",
-    icon: BookOpenCheck,
+    title: "Rafiki searches published sources",
+    body: "Releases, datasets, publications and approved communication material. Nothing that is not already public.",
   },
   {
-    title: "Answers with references",
-    description: "Responses are clear and plain-language, with the documents they came from.",
-    icon: FileSearch,
+    title: "You get the answer with its sources",
+    body: "Plain language, with the series codes and links behind every figure so you can check the numbers yourself.",
   },
   {
-    title: "People make the final call",
-    description: "Anything sensitive or media-related is checked by Stats SA before it goes out.",
-    icon: UserCheck,
+    title: "A person approves anything sensitive",
+    body: "Media, complex and low-confidence questions are drafted and routed to a Stats SA communications official.",
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="border-t border-border/60 py-16 sm:py-24">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 sm:px-6">
-        <div className="flex max-w-2xl flex-col gap-3">
-          <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-            How it works
-          </p>
-          <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-            Simple to ask. Easy to verify.
-          </h2>
-          <p className="leading-relaxed text-muted-foreground">
-            Four steps from a question to an answer you can trust.
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {steps.map((step) => (
-            <Card key={step.title} size="sm">
-              <CardHeader>
-                <CardTitle>{step.title}</CardTitle>
-                <CardDescription>{step.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <span className="flex size-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-                  <step.icon className="size-4" />
-                </span>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    </section>
+    <Section
+      id="how-it-works"
+      label="how it works"
+      title="From question to cited answer"
+      description="Four steps, and a person in the loop before anything sensitive goes out."
+    >
+      <ol className="relative flex flex-col">
+        <span aria-hidden="true" className="absolute top-3 bottom-3 left-[11px] w-px bg-border" />
+        {steps.map((step, index) => (
+          <li
+            key={step.title}
+            className="grid grid-cols-[24px_1fr] gap-6 py-6 first:pt-1 last:pb-1"
+          >
+            <span className="z-10 mt-0.5 flex size-6 items-center justify-center bg-background font-mono text-[11px] text-muted-foreground ring-1 ring-border">
+              {index + 1}
+            </span>
+            <div className="flex flex-col gap-2">
+              <h3 className="font-heading text-base font-medium">{step.title}</h3>
+              <p className="max-w-[62ch] leading-relaxed text-muted-foreground">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </Section>
   );
 }

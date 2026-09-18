@@ -1,3 +1,4 @@
+import { Section } from "../components/section.tsx";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@voltedge/ui";
 
 const faqs = [
@@ -5,7 +6,7 @@ const faqs = [
     value: "official",
     question: "Is this an official Stats SA answer?",
     answer:
-      "Yes — answers come from published Stats SA information, and each one points to the documents it used. Media and sensitive queries are prepared for review by Stats SA before any response is issued.",
+      "Yes. Answers come from published Stats SA information, and each one points to the documents it used. Media and sensitive queries are prepared for review by Stats SA before any response is issued.",
   },
   {
     value: "sources",
@@ -41,35 +42,32 @@ const faqs = [
     value: "systems",
     question: "Can other systems use Rafiki?",
     answer:
-      "Yes — Rafiki is designed as a service that Stats SA websites and systems can connect to.",
+      "Yes. Rafiki is designed as a service that Stats SA websites and systems can connect to.",
   },
 ];
 
 export function Faq() {
   return (
-    <section id="faq" className="border-t border-border/60 py-16 sm:py-24">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 sm:px-6">
-        <div className="flex max-w-2xl flex-col gap-3">
-          <p className="text-xs font-medium tracking-[0.2em] text-muted-foreground uppercase">
-            FAQ
-          </p>
-          <h2 className="font-heading text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-            Questions people ask first
-          </h2>
-        </div>
-        <div className="max-w-3xl">
-          <Accordion defaultValue={["official"]}>
-            {faqs.map((faq) => (
-              <AccordionItem key={faq.value} value={faq.value}>
-                <AccordionTrigger>{faq.question}</AccordionTrigger>
-                <AccordionContent>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{faq.answer}</p>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
+    <Section
+      id="faq"
+      label="faq"
+      title="Questions people ask first"
+      description="Short answers to the things people want to know before they trust a number."
+    >
+      <div className="max-w-3xl">
+        <Accordion defaultValue={["official"]}>
+          {faqs.map((faq) => (
+            <AccordionItem key={faq.value} value={faq.value}>
+              <AccordionTrigger>{faq.question}</AccordionTrigger>
+              <AccordionContent>
+                <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+                  {faq.answer}
+                </p>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
       </div>
-    </section>
+    </Section>
   );
 }

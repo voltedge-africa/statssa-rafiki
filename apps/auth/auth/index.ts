@@ -5,6 +5,7 @@ import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { MemoryStorage } from "@openauthjs/openauth/storage/memory";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { createTransport } from "nodemailer";
+import { withProviderList } from "./provider-list-ui.ts";
 import { withRole } from "./register-ui.ts";
 import { subjects } from "./subjects.ts";
 import { theme } from "./theme.ts";
@@ -107,6 +108,11 @@ const passwordUI = PasswordUI({
   },
 });
 
+const password = withProviderList({
+  ...passwordUI,
+  register: withRole(passwordUI.register),
+});
+
 export default issuer({
   subjects,
   theme,
@@ -115,10 +121,7 @@ export default issuer({
   // OPENAUTH_STORAGE env var, which the issuer reads and lets override this value.
   storage: MemoryStorage({ persist: persistFile }),
   providers: {
-    password: PasswordProvider({
-      ...passwordUI,
-      register: withRole(passwordUI.register),
-    }),
+    password: PasswordProvider(password),
   },
   async allow(input, req) {
     return isAllowed(input.redirectURI, req);
