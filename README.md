@@ -5,7 +5,7 @@ A Vite+ monorepo for the STATSSA Rafiki auth stack.
 | App            | What it is                                                                                                                                     | Stack                                      |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | `apps/auth`    | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`. | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
-| `apps/api`     | NestJS API. Verifies the issuer's Bearer access tokens against its JWKS and enforces roles.                                                    | NestJS (Express), Vitest, Oxc              |
+| `apps/api`     | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification and role guards.                                    | NestJS (Express), pgvector, Vitest, Oxc    |
 | `apps/website` | The front-end app. Signs users in through the issuer, verifies tokens server-side, and lands them on a role-specific page.                     | Vite (SPA), Node middleware                |
 
 Users register with one of three roles — **Press**, **Staff**, **Admin** — and are redirected to `/press`, `/staff`, or `/admin` after signing in.
@@ -45,6 +45,10 @@ vp run db:up
 
 # 3. Apply the Drizzle migrations (creates the `users` table and `role` enum)
 vp run db:migrate
+
+# 4. (Optional, for the API's grounded answers) cache the embedding model and index the corpus
+vp run rag:model
+vp run rag:ingest
 ```
 
 `vp install` also runs `vp config` (git hooks) via the `prepare` script.
@@ -68,6 +72,7 @@ cp apps/website/.env.example apps/website/.env
 | `API_PORT`             | `apps/api`              | `3002`                                                | Port the API listens on.                                                                                   |
 | `AUTH_ISSUER`          | `apps/api`              | derived from the request host                         | Override the issuer URL. Required in production.                                                           |
 | `API_ALLOWED_ORIGINS`  | `apps/api`              | reflect any origin in dev, none in production         | Browser origins allowed by CORS (comma-separated `scheme://host`).                                         |
+| `RAG_DATABASE_URL`     | `apps/api`              | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_rag`  | Postgres database holding the RAG index (needs the `pgvector` extension).                                  |
 
 ---
 
@@ -134,6 +139,31 @@ Raw SQL access:
 
 ```bash
 docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_auth
+```
+
+---
+
+## Corpus (RAG)
+
+The API answers statistics questions from a local corpus using hybrid keyword and vector search
+backed by Postgres (`rafiki_rag` on the same server as auth, with the `pgvector` extension).
+
+```bash
+vp run rag:model   # one-time: download the local embedding model (only online step)
+vp run rag:ingest  # embed and index apps/api/corpus into Postgres
+```
+
+- Source documents live in [`apps/api/corpus`](apps/api/corpus) (`.txt`, `.md`, `.json`,
+  `.jsonl`); a sample CPI extract ships under `corpus/sample`.
+- Re-run `vp run rag:ingest` after changing the corpus. Files are keyed by content hash, so
+  unchanged documents are skipped and changed ones are replaced atomically.
+- `pgvector` is enabled on first ingest. The auth database (`rafiki_auth`) and the RAG database
+  (`rafiki_rag`) share the one Postgres container.
+
+Raw SQL access to the index:
+
+```bash
+docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_rag
 ```
 
 ---

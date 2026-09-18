@@ -1,19 +1,19 @@
-import { existsSync } from "node:fs";
-import { DB_PATH } from "./config.ts";
-import { getDocument, openReadonly, type IndexedDocument, type RagDatabase } from "./db.ts";
+import { getDocument, openDatabase, type IndexedDocument, type RagDatabase } from "./db.ts";
 
 let connection: RagDatabase | undefined;
 
 function database(): RagDatabase {
-  if (!connection) {
-    if (!existsSync(DB_PATH)) {
-      throw new Error(`RAG index not found at ${DB_PATH}. Run \`pnpm rag:ingest\` first.`);
-    }
-    connection = openReadonly(DB_PATH);
-  }
+  connection ??= openDatabase();
   return connection;
 }
 
-export function retrieveDocument(source: string): IndexedDocument | undefined {
-  return getDocument(database(), source);
+export async function retrieveDocument(source: string): Promise<IndexedDocument | undefined> {
+  try {
+    return await getDocument(database(), source);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`RAG index unavailable (${detail}). Run \`vp run api#rag:ingest\` first.`, {
+      cause: error,
+    });
+  }
 }

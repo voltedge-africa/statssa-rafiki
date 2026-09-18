@@ -6,9 +6,9 @@ import { retrieveDocument } from "./rag/document.ts";
 @Public()
 export class RagController {
   @Get("document")
-  document(@Query("source") source?: string) {
+  async document(@Query("source") source?: string) {
     if (!source) throw new BadRequestException("source is required");
-    const document = retrieveDocument(source);
+    const document = await retrieveDocument(source);
     if (!document) throw new NotFoundException(`No indexed document for source "${source}"`);
     return document;
   }

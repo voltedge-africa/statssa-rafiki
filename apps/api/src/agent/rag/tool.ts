@@ -46,7 +46,7 @@ export const searchStatsSa: AgentTool<
   execute: async (_toolCallId, params) => {
     const k = params.k ?? DEFAULT_TOP_K;
     try {
-      const { retrieve } = await import("./retrieve.ts");
+      const { retrieve } = await import("./retrieve.js");
       const hits = await retrieve(params.query, k);
       if (hits.length === 0) {
         return {

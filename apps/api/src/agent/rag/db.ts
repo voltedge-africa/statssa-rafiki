@@ -1,9 +1,6 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import Database from "better-sqlite3";
-import * as sqliteVec from "sqlite-vec";
+import postgres, { type Sql } from "postgres";
 import {
-  DB_PATH,
+  DATABASE_URL,
   EMBED_DIM,
   MAX_DF_RATIO,
   MIN_SIMILARITY,
@@ -11,13 +8,15 @@ import {
   STRICT_SIMILARITY,
 } from "./config.ts";
 
-export type RagDatabase = Database.Database;
+export type RagDatabase = Sql;
 
 export interface DocumentInput {
   source: string;
   title: string | null;
   sha256: string;
-  meta?: Record<string, unknown>;
+  /** Full normalized document text, served verbatim by the document preview. */
+  text: string;
+  meta?: postgres.JSONValue;
 }
 
 export interface RagHit {
@@ -32,92 +31,77 @@ export interface RagHit {
   vectorRank?: number;
 }
 
-export function vectorBuffer(vector: Float32Array): Buffer {
-  return Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
-}
-
-export function initSchema(db: RagDatabase): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS documents (
-      id INTEGER PRIMARY KEY,
-      source TEXT NOT NULL UNIQUE,
-      title TEXT,
-      sha256 TEXT NOT NULL,
-      meta TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS documents_sha_idx ON documents(sha256);
-
-    CREATE TABLE IF NOT EXISTS chunks (
-      id INTEGER PRIMARY KEY,
-      document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-      ordinal INTEGER NOT NULL,
-      text TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS chunks_document_idx ON chunks(document_id);
-
-    CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-      text,
-      content='chunks',
-      content_rowid='id',
-      tokenize='unicode61 remove_diacritics 2'
-    );
-
-    CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
-      INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
-    END;
-    CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
-      INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES ('delete', old.id, old.text);
-    END;
-
-    CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0(
-      chunk_id INTEGER PRIMARY KEY,
-      embedding float[${EMBED_DIM}]
-    );
-  `);
-}
-
-export function openDatabase(path = DB_PATH): RagDatabase {
-  mkdirSync(dirname(path), { recursive: true });
-  const db = new Database(path);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  sqliteVec.load(db);
-  return db;
-}
-
-export function openReadonly(path = DB_PATH): RagDatabase {
-  const db = new Database(path, { readonly: true, fileMustExist: true });
-  sqliteVec.load(db);
-  return db;
-}
-
-export function indexStats(db: RagDatabase): { documents: number; chunks: number } {
-  const documents = (db.prepare("SELECT COUNT(*) AS n FROM documents").get() as { n: number }).n;
-  const chunks = (db.prepare("SELECT COUNT(*) AS n FROM chunks").get() as { n: number }).n;
-  return { documents, chunks };
-}
-
 export interface IndexedDocument {
   source: string;
   title: string | null;
   text: string;
 }
 
-export function getDocument(db: RagDatabase, source: string): IndexedDocument | undefined {
-  const document = db
-    .prepare("SELECT id, source, title FROM documents WHERE source = ?")
-    .get(source) as { id: number; source: string; title: string | null } | undefined;
-  if (!document) return undefined;
+/** pgvector accepts a bracketed string literal, e.g. `[0.1,0.2,...]`. */
+export function vectorLiteral(vector: Float32Array): string {
+  return `[${Array.from(vector).join(",")}]`;
+}
 
-  const chunks = db
-    .prepare("SELECT text FROM chunks WHERE document_id = ? ORDER BY ordinal")
-    .all(document.id) as { text: string }[];
+export async function initSchema(db: RagDatabase): Promise<void> {
+  const dim = Number.isInteger(EMBED_DIM) && EMBED_DIM > 0 ? EMBED_DIM : 384;
+
+  await db.unsafe(`CREATE EXTENSION IF NOT EXISTS vector;`);
+  await db.unsafe(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      source text NOT NULL UNIQUE,
+      title text,
+      sha256 text NOT NULL,
+      text text NOT NULL DEFAULT '',
+      meta jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.unsafe(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS text text NOT NULL DEFAULT '';`);
+  await db.unsafe(`CREATE INDEX IF NOT EXISTS documents_sha_idx ON documents (sha256);`);
+  await db.unsafe(`
+    CREATE TABLE IF NOT EXISTS chunks (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      document_id integer NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+      ordinal integer NOT NULL,
+      text text NOT NULL,
+      tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple'::regconfig, text)) STORED,
+      embedding vector(${dim}) NOT NULL
+    );
+  `);
+  await db.unsafe(`CREATE INDEX IF NOT EXISTS chunks_document_idx ON chunks (document_id);`);
+  await db.unsafe(`CREATE INDEX IF NOT EXISTS chunks_tsv_idx ON chunks USING gin (tsv);`);
+  await db.unsafe(
+    `CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);`,
+  );
+}
+
+export function openDatabase(url = DATABASE_URL): RagDatabase {
+  return postgres(url, { max: 4, onnotice: () => undefined });
+}
+
+export async function indexStats(db: RagDatabase): Promise<{ documents: number; chunks: number }> {
+  const [row] = await db<{ documents: number; chunks: number }[]>`
+    SELECT
+      (SELECT COUNT(*)::int FROM documents) AS documents,
+      (SELECT COUNT(*)::int FROM chunks) AS chunks
+  `;
+  return row ?? { documents: 0, chunks: 0 };
+}
+
+export async function getDocument(
+  db: RagDatabase,
+  source: string,
+): Promise<IndexedDocument | undefined> {
+  const [document] = await db<{ source: string; title: string | null; text: string }[]>`
+    SELECT source, title, text FROM documents WHERE source = ${source}
+  `;
+  if (!document) return undefined;
 
   return {
     source: document.source,
     title: document.title,
-    text: chunks.map((chunk) => chunk.text).join("\n\n"),
+    text: document.text,
   };
 }
 
@@ -125,57 +109,49 @@ export function getDocument(db: RagDatabase, source: string): IndexedDocument | 
  * Insert or replace a document keyed by `source`. Returns false when the content
  * hash is unchanged, so re-ingesting an identical corpus is a no-op.
  */
-export function upsertDocument(
+export async function upsertDocument(
   db: RagDatabase,
   document: DocumentInput,
   chunks: string[],
   vectors: Float32Array[],
-): boolean {
+): Promise<boolean> {
   if (chunks.length !== vectors.length) {
     throw new Error(`chunks (${chunks.length}) and vectors (${vectors.length}) length mismatch`);
   }
 
-  const existing = db
-    .prepare("SELECT id, sha256 FROM documents WHERE source = ?")
-    .get(document.source) as { id: number; sha256: string } | undefined;
+  const [existing] = await db<{ id: number; sha256: string; text: string }[]>`
+    SELECT id, sha256, text FROM documents WHERE source = ${document.source}
+  `;
+  if (existing && existing.sha256 === document.sha256 && existing.text === document.text) {
+    return false;
+  }
 
-  if (existing && existing.sha256 === document.sha256) return false;
-
-  const run = db.transaction(() => {
+  await db.begin(async (tx) => {
     if (existing) {
-      const oldIds = db.prepare("SELECT id FROM chunks WHERE document_id = ?").all(existing.id) as {
-        id: number;
-      }[];
-      const deleteVector = db.prepare("DELETE FROM chunk_vectors WHERE chunk_id = ?");
-      for (const row of oldIds) deleteVector.run(BigInt(row.id));
-      db.prepare("DELETE FROM documents WHERE id = ?").run(existing.id);
+      await tx`DELETE FROM documents WHERE id = ${existing.id}`;
     }
 
-    const info = db
-      .prepare(
-        "INSERT INTO documents(source, title, sha256, meta, created_at) VALUES (?, ?, ?, ?, ?)",
+    const [inserted] = await tx<{ id: number }[]>`
+      INSERT INTO documents (source, title, sha256, text, meta)
+      VALUES (
+        ${document.source},
+        ${document.title},
+        ${document.sha256},
+        ${document.text},
+        ${document.meta ? tx.json(document.meta) : null}
       )
-      .run(
-        document.source,
-        document.title,
-        document.sha256,
-        document.meta ? JSON.stringify(document.meta) : null,
-        Date.now(),
-      );
-    const documentId = Number(info.lastInsertRowid);
+      RETURNING id
+    `;
+    if (!inserted) throw new Error("insert returned no document id");
 
-    const insertChunk = db.prepare(
-      "INSERT INTO chunks(document_id, ordinal, text) VALUES (?, ?, ?)",
-    );
-    const insertVector = db.prepare("INSERT INTO chunk_vectors(chunk_id, embedding) VALUES (?, ?)");
-
-    chunks.forEach((text, ordinal) => {
-      const result = insertChunk.run(documentId, ordinal, text);
-      insertVector.run(BigInt(Number(result.lastInsertRowid)), vectorBuffer(vectors[ordinal]));
-    });
+    for (const [ordinal, text] of chunks.entries()) {
+      await tx`
+        INSERT INTO chunks (document_id, ordinal, text, embedding)
+        VALUES (${inserted.id}, ${ordinal}, ${text}, ${vectorLiteral(vectors[ordinal])}::vector)
+      `;
+    }
   });
 
-  run();
   return true;
 }
 
@@ -271,34 +247,35 @@ function tokenize(query: string): string[] {
   return [...new Set(terms)].filter((term) => term.length > 1 && !STOPWORDS.has(term));
 }
 
+/** Postgres `tsquery` needs each term quoted; tokenize() keeps terms alphanumeric. */
+function buildTsQuery(terms: string[]): string {
+  return terms.map((term) => `'${term}'`).join(" | ");
+}
+
 /**
  * Keep only terms that occur in the corpus but not in a large share of its documents.
  * Document-level frequency is used (not chunk-level) so boilerplate repeated in every
  * chunk of a few documents ("Stats SA", "South Africa") is treated as non-discriminative.
  */
-function discriminativeTerms(db: RagDatabase, query: string): string[] {
-  const totalDocs = (db.prepare("SELECT COUNT(*) AS n FROM documents").get() as { n: number }).n;
+async function discriminativeTerms(db: RagDatabase, query: string): Promise<string[]> {
+  const [counts] = await db<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM documents`;
+  const totalDocs = counts?.n ?? 0;
   if (totalDocs === 0) return [];
+
   const maxDf = Math.max(1, Math.floor(totalDocs * MAX_DF_RATIO));
-  const countStmt = db.prepare(
-    `SELECT COUNT(DISTINCT c.document_id) AS n
-     FROM chunks_fts
-     JOIN chunks c ON c.id = chunks_fts.rowid
-     WHERE chunks_fts MATCH ?`,
-  );
-  return tokenize(query).filter((term) => {
-    const df = (countStmt.get(`"${term}"`) as { n: number }).n;
-    return df > 0 && df <= maxDf;
-  });
-}
+  const kept: string[] = [];
 
-function buildFtsQuery(terms: string[]): string {
-  return terms.map((term) => `"${term}"`).join(" OR ");
-}
+  for (const term of tokenize(query)) {
+    const [row] = await db<{ n: number }[]>`
+      SELECT COUNT(DISTINCT document_id)::int AS n
+      FROM chunks
+      WHERE tsv @@ to_tsquery('simple', ${`'${term}'`})
+    `;
+    const df = row?.n ?? 0;
+    if (df > 0 && df <= maxDf) kept.push(term);
+  }
 
-/** L2 distance between unit vectors maps to cosine similarity as 1 - d^2 / 2. */
-function l2ToCosine(distance: number): number {
-  return 1 - (distance * distance) / 2;
+  return kept;
 }
 
 interface KeywordRow {
@@ -319,22 +296,23 @@ interface VectorRow {
   distance: number;
 }
 
-export function keywordSearch(db: RagDatabase, terms: string[], limit: number): RagHit[] {
-  const fts = buildFtsQuery(terms);
-  if (!fts) return [];
+export async function keywordSearch(
+  db: RagDatabase,
+  terms: string[],
+  limit: number,
+): Promise<RagHit[]> {
+  const query = buildTsQuery(terms);
+  if (!query) return [];
 
-  const rows = db
-    .prepare(
-      `SELECT c.id AS chunkId, c.text AS text, d.id AS documentId, d.source AS source,
-              d.title AS title, bm25(chunks_fts) AS rank
-       FROM chunks_fts
-       JOIN chunks c ON c.id = chunks_fts.rowid
-       JOIN documents d ON d.id = c.document_id
-       WHERE chunks_fts MATCH ?
-       ORDER BY rank
-       LIMIT ?`,
-    )
-    .all(fts, BigInt(limit)) as KeywordRow[];
+  const rows = await db<KeywordRow[]>`
+    SELECT c.id AS "chunkId", c.text AS text, d.id AS "documentId", d.source AS source,
+           d.title AS title, ts_rank_cd(c.tsv, to_tsquery('simple', ${query})) AS rank
+    FROM chunks c
+    JOIN documents d ON d.id = c.document_id
+    WHERE c.tsv @@ to_tsquery('simple', ${query})
+    ORDER BY rank DESC
+    LIMIT ${limit}
+  `;
 
   return rows.map((row) => ({
     chunkId: row.chunkId,
@@ -346,23 +324,20 @@ export function keywordSearch(db: RagDatabase, terms: string[], limit: number): 
   }));
 }
 
-export function vectorSearch(
+export async function vectorSearch(
   db: RagDatabase,
   embedding: Float32Array,
   limit: number,
   minSimilarity: number,
-): RagHit[] {
-  const rows = db
-    .prepare(
-      `SELECT v.chunk_id AS chunkId, v.distance AS distance, c.text AS text,
-              d.id AS documentId, d.source AS source, d.title AS title
-       FROM chunk_vectors v
-       JOIN chunks c ON c.id = v.chunk_id
-       JOIN documents d ON d.id = c.document_id
-       WHERE v.embedding MATCH ? AND k = ?
-       ORDER BY v.distance`,
-    )
-    .all(vectorBuffer(embedding), BigInt(limit)) as VectorRow[];
+): Promise<RagHit[]> {
+  const rows = await db<VectorRow[]>`
+    SELECT c.id AS "chunkId", c.text AS text, d.id AS "documentId", d.source AS source,
+           d.title AS title, c.embedding <=> ${vectorLiteral(embedding)}::vector AS distance
+    FROM chunks c
+    JOIN documents d ON d.id = c.document_id
+    ORDER BY distance
+    LIMIT ${limit}
+  `;
 
   return rows
     .map((row) => ({
@@ -372,9 +347,9 @@ export function vectorSearch(
       title: row.title,
       text: row.text,
       score: 0,
-      similarity: l2ToCosine(row.distance),
+      similarity: 1 - row.distance,
     }))
-    .filter((hit) => hit.similarity >= minSimilarity);
+    .filter((hit) => (hit.similarity ?? 0) >= minSimilarity);
 }
 
 /**
@@ -386,17 +361,19 @@ export function vectorSearch(
  * not, so queries with no grounding in the corpus return nothing instead of the
  * nearest (but irrelevant) neighbours.
  */
-export function hybridSearch(
+export async function hybridSearch(
   db: RagDatabase,
   query: string,
   embedding: Float32Array,
   k: number,
-): RagHit[] {
+): Promise<RagHit[]> {
   const pool = Math.max(k * 4, 20);
-  const terms = discriminativeTerms(db, query);
+  const terms = await discriminativeTerms(db, query);
   const minSimilarity = terms.length > 0 ? MIN_SIMILARITY : STRICT_SIMILARITY;
-  const keyword = keywordSearch(db, terms, pool);
-  const vector = vectorSearch(db, embedding, pool, minSimilarity);
+  const [keyword, vector] = await Promise.all([
+    keywordSearch(db, terms, pool),
+    vectorSearch(db, embedding, pool, minSimilarity),
+  ]);
 
   if (keyword.length === 0 && vector.length === 0) return [];
 

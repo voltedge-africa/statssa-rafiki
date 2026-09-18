@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    # pgvector build of Postgres 17: the auth store lives in `rafiki_auth`, the API's
+    # RAG index lives in `rafiki_rag`, and the vector extension is required by the latter.
+    image: pgvector/pgvector:pg17
     container_name: rafiki-auth-postgres
     restart: unless-stopped
     environment:

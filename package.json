@@ -18,6 +18,8 @@
     "db:generate": "vp run auth#db:generate",
     "db:migrate": "vp run auth#db:migrate",
     "db:push": "vp run auth#db:push",
+    "rag:model": "vp run api#rag:model",
+    "rag:ingest": "vp run api#rag:ingest",
     "prepare": "vp config"
   },
   "devDependencies": {

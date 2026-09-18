@@ -44,8 +44,8 @@ export const showDocument: AgentTool<typeof DocumentParameters, { block?: UiBloc
     "Open a preview of a source document in the interface. Use when the user asks to see, open, read, or show a document that appeared in search results. The source must be an exact source path returned by search_statssa.",
   parameters: DocumentParameters,
   execute: async (_toolCallId, params) => {
-    const { retrieveDocument } = await import("../rag/document.ts");
-    const document = retrieveDocument(params.source);
+    const { retrieveDocument } = await import("../rag/document.js");
+    const document = await retrieveDocument(params.source);
     if (!document) {
       return {
         content: text(`No indexed document found for source "${params.source}".`),

@@ -24,16 +24,14 @@
     "@openauthjs/openauth": "^0.4.3",
     "@voltedge/agent-contract": "workspace:*",
     "@voltedge/auth-contract": "workspace:*",
-    "better-sqlite3": "^13.0.3",
+    "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
-    "sqlite-vec": "^0.1.9"
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.3",
     "@nestjs/schematics": "^12.0.3",
     "@nestjs/testing": "^12.0.3",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.1",
     "@types/supertest": "^7.2.1",

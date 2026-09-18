@@ -1,24 +1,28 @@
-import { existsSync } from "node:fs";
-import { DB_PATH, DEFAULT_TOP_K } from "./config.ts";
-import { hybridSearch, openReadonly, type RagDatabase, type RagHit } from "./db.ts";
+import { DEFAULT_TOP_K } from "./config.ts";
+import { hybridSearch, openDatabase, type RagDatabase, type RagHit } from "./db.ts";
 import { embedQuery } from "./embed.ts";
 
 let connection: RagDatabase | undefined;
 
 function database(): RagDatabase {
-  if (!connection) {
-    if (!existsSync(DB_PATH)) {
-      throw new Error(`RAG index not found at ${DB_PATH}. Run \`pnpm rag:ingest\` first.`);
-    }
-    connection = openReadonly(DB_PATH);
-  }
+  connection ??= openDatabase();
   return connection;
 }
 
+function unavailable(error: unknown): Error {
+  const detail = error instanceof Error ? error.message : String(error);
+  return new Error(`RAG index unavailable (${detail}). Run \`vp run api#rag:ingest\` first.`, {
+    cause: error,
+  });
+}
+
 export async function retrieve(query: string, k: number = DEFAULT_TOP_K): Promise<RagHit[]> {
-  const db = database();
   const embedding = await embedQuery(query);
-  return hybridSearch(db, query, embedding, k);
+  try {
+    return await hybridSearch(database(), query, embedding, k);
+  } catch (error) {
+    throw unavailable(error);
+  }
 }
 
 export type { RagHit };

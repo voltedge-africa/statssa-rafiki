@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { Agent, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
 import { createModels, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go";
@@ -50,11 +50,29 @@ function stopReasonAttr(reason: string): string {
  * store (see the plan).
  */
 @Injectable()
-export class AgentService {
+export class AgentService implements OnModuleInit {
   private catalog: ReturnType<typeof createModels> | undefined;
   private readonly sessions = new Map<string, Agent>();
 
   constructor(private readonly telemetry: TelemetryService) {}
+
+  onModuleInit(): void {
+    void this.warmUp();
+  }
+
+  /** Load the embedding model in the background so the first search is not a cold start. */
+  private async warmUp(): Promise<void> {
+    try {
+      const { warmUp } = await import("./rag/embed.js");
+      await warmUp();
+      Logger.log("Embedding model ready", "AgentService");
+    } catch (error) {
+      Logger.warn(
+        `Embedding model warm-up failed: ${error instanceof Error ? error.message : String(error)}`,
+        "AgentService",
+      );
+    }
+  }
 
   private models() {
     if (!this.catalog) {
