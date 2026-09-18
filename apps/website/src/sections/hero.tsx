@@ -1,5 +1,7 @@
 import { Button } from "@voltedge/ui";
 
+import { publicPortalUrl } from "../lib/public-portal.ts";
+
 const sources = [
   {
     code: "P0211",
@@ -66,16 +68,11 @@ export function Hero() {
             data-reveal
             style={{ animationDelay: "140ms" }}
           >
-            <Button size="lg" nativeButton={false} render={<a href="#ask" />}>
-              See an example answer
+            <Button size="lg" nativeButton={false} render={<a href={publicPortalUrl()} />}>
+              Ask a question
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              nativeButton={false}
-              render={<a href="#how-it-works" />}
-            >
-              How it works
+            <Button size="lg" variant="outline" nativeButton={false} render={<a href="#ask" />}>
+              See an example answer
             </Button>
           </div>
         </div>
