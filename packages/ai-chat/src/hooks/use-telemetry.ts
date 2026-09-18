@@ -12,14 +12,22 @@ type StreamEvent =
 export interface UseTelemetryOptions {
   /** Base URL of the agent API. Empty string targets the current origin. */
   apiBase?: string;
+  /** Open the telemetry stream. Defaults to true. */
+  enabled?: boolean;
 }
 
 export function useTelemetry(options: UseTelemetryOptions = {}) {
   const apiBase = options.apiBase ?? "";
+  const enabled = options.enabled ?? true;
   const [spans, setSpans] = useState<RecordedSpan[]>([]);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setConnected(false);
+      return;
+    }
+
     const source = new EventSource(`${apiBase}/api/telemetry/stream`);
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
@@ -47,7 +55,7 @@ export function useTelemetry(options: UseTelemetryOptions = {}) {
     };
 
     return () => source.close();
-  }, [apiBase]);
+  }, [apiBase, enabled]);
 
   const summary = useMemo<TelemetrySummary>(() => {
     let requests = 0;

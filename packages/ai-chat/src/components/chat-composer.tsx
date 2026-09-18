@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CornerDownLeftIcon } from "lucide-react";
+import { ArrowUpIcon } from "lucide-react";
 import { Button, Spinner, Textarea } from "@voltedge/ui";
 import type { ChatStatus } from "@voltedge/agent-contract";
 
@@ -26,7 +26,7 @@ export function ChatComposer({
         event.preventDefault();
         submit();
       }}
-      className="flex items-end gap-2 rounded-xl border border-border bg-card p-2 transition-colors focus-within:border-ring"
+      className="flex items-end gap-2 rounded-3xl border border-border bg-card p-2 pl-4 shadow-sm transition-colors focus-within:border-ring"
     >
       <Textarea
         id="message"
@@ -42,15 +42,16 @@ export function ChatComposer({
         rows={1}
         aria-label="Message"
         placeholder="Ask about South African statistics…"
-        className="min-h-9 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+        className="min-h-10 resize-none border-0 bg-transparent px-0 py-2.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
       />
       <Button
         type="submit"
         size="icon"
         disabled={busy || !value.trim()}
         aria-label={busy ? "Generating" : "Send"}
+        className="rounded-full"
       >
-        {busy ? <Spinner /> : <CornerDownLeftIcon />}
+        {busy ? <Spinner /> : <ArrowUpIcon />}
       </Button>
     </form>
   );
