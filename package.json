@@ -9,9 +9,10 @@
   ],
   "type": "module",
   "scripts": {
-    "ready": "vp fmt && vp lint && vp run test -r && vp run build -r",
+    "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
     "dev": "vp run website#dev",
     "dev:auth": "vp run auth#server",
+    "dev:api": "vp run api#dev",
     "db:up": "vp run auth#db:up",
     "db:down": "vp run auth#db:down",
     "db:generate": "vp run auth#db:generate",

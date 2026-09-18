@@ -5,9 +5,12 @@ A Vite+ monorepo for the STATSSA Rafiki auth stack.
 | App            | What it is                                                                                                                                     | Stack                                      |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | `apps/auth`    | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`. | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
+| `apps/api`     | NestJS API. Verifies the issuer's Bearer access tokens against its JWKS and enforces roles.                                                    | NestJS (Express), Vitest, Oxc              |
 | `apps/website` | The front-end app. Signs users in through the issuer, verifies tokens server-side, and lands them on a role-specific page.                     | Vite (SPA), Node middleware                |
 
 Users register with one of three roles — **Press**, **Staff**, **Admin** — and are redirected to `/press`, `/staff`, or `/admin` after signing in.
+
+The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API.
 
 ---
 
@@ -52,21 +55,25 @@ The defaults work for local development. Copy the examples only if you need to o
 
 ```bash
 cp apps/auth/.env.example apps/auth/.env
+cp apps/api/.env.example apps/api/.env
 cp apps/website/.env.example apps/website/.env
 ```
 
-| Variable               | App            | Default                                               | Purpose                                                                                                    |
-| ---------------------- | -------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`         | `apps/auth`    | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth` | Postgres connection string.                                                                                |
-| `AUTH_PORT`            | `apps/auth`    | `3001`                                                | Port the issuer listens on.                                                                                |
-| `AUTH_ALLOWED_ORIGINS` | `apps/auth`    | –                                                     | Extra redirect-URI origins (comma-separated `scheme://host`). Same-host clients are allowed automatically. |
-| `VITE_AUTH_ISSUER`     | `apps/website` | derived from the browser hostname                     | Override the issuer URL (only needed behind an HTTPS proxy).                                               |
+| Variable               | App                     | Default                                               | Purpose                                                                                                    |
+| ---------------------- | ----------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`         | `apps/auth`             | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth` | Postgres connection string.                                                                                |
+| `AUTH_PORT`            | `apps/auth`, `apps/api` | `3001`                                                | Port the issuer listens on. The API derives the issuer URL from it.                                        |
+| `AUTH_ALLOWED_ORIGINS` | `apps/auth`             | –                                                     | Extra redirect-URI origins (comma-separated `scheme://host`). Same-host clients are allowed automatically. |
+| `VITE_AUTH_ISSUER`     | `apps/website`          | derived from the browser hostname                     | Override the issuer URL (only needed behind an HTTPS proxy).                                               |
+| `API_PORT`             | `apps/api`              | `3002`                                                | Port the API listens on.                                                                                   |
+| `AUTH_ISSUER`          | `apps/api`              | derived from the request host                         | Override the issuer URL. Required in production.                                                           |
+| `API_ALLOWED_ORIGINS`  | `apps/api`              | reflect any origin in dev, none in production         | Browser origins allowed by CORS (comma-separated `scheme://host`).                                         |
 
 ---
 
 ## Run
 
-Two long-running processes, in two terminals, from the repo root:
+Three long-running processes, in three terminals, from the repo root:
 
 ```bash
 # terminal 1 — auth issuer on http://localhost:3001
@@ -74,6 +81,9 @@ vp run dev:auth
 
 # terminal 2 — website on http://localhost:5173
 vp run dev
+
+# terminal 3 — API on http://localhost:3002
+vp run dev:api
 ```
 
 Open <http://localhost:5173> and click **Sign in or register**.
@@ -82,13 +92,14 @@ Open <http://localhost:5173> and click **Sign in or register**.
 
 ### Accessing over Tailscale
 
-Both servers listen on all interfaces, so from another machine on your tailnet open:
+All three servers listen on all interfaces, so from another machine on your tailnet open:
 
 ```
-http://<hostname>:5173
+http://<hostname>:5173     # website
+http://<hostname>:3002     # API
 ```
 
-e.g. `http://armomarchy.taild8f6b9.ts.net:5173`. The website derives the issuer URL from the hostname you used (`http://<hostname>:3001`), so no config is needed. The database stays bound to `127.0.0.1` and is **not** exposed to the tailnet.
+e.g. `http://armomarchy.taild8f6b9.ts.net:5173`. The website and the API derive the issuer URL from the hostname you used (`http://<hostname>:3001`), so no config is needed. The database stays bound to `127.0.0.1` and is **not** exposed to the tailnet.
 
 ---
 
@@ -133,6 +144,7 @@ docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_auth
 - On sign-in the issuer reads the role by email and puts it in the access token's subject.
 - `/callback` redirects to `/press`, `/staff`, or `/admin` based on the role.
 - Visiting a role page you don't belong to shows **Not authorized**; unknown paths return a real **404**.
+- The API treats the token's role as authoritative: `GET /me` returns the caller's subject, and routes marked `@Roles(...)` reject the wrong role with **403**.
 
 ### Resetting dev auth state
 
@@ -144,13 +156,34 @@ docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_auth
 
 ---
 
+## API
+
+`apps/api` is a NestJS (Express) service that trusts only the auth issuer. Requests carry an
+`Authorization: Bearer <access token>` header; the token is verified against the issuer's JWKS and
+its subject (`{ id, role }`) is validated against the shared contract.
+
+| Route             | Access   | Returns              |
+| ----------------- | -------- | -------------------- |
+| `GET /health`     | public   | `{ status, uptime }` |
+| `GET /me`         | any role | the caller's subject |
+| `GET /admin/ping` | Admin    | role-guard example   |
+
+- The issuer URL is derived from the request host and `AUTH_PORT`, so it works locally and over a
+  tailnet. Set `AUTH_ISSUER` to override; it is required in production.
+- CORS reflects any origin in development and allows only `API_ALLOWED_ORIGINS` in production, so
+  server-to-server calls (like the website's middleware) always work.
+- Guards: `@Public()` opts a route out of auth, `@Roles("Admin")` restricts one, and
+  `@CurrentUser()` injects the verified subject.
+
+---
+
 ## Quality checks
 
 ```bash
-vp check        # format + lint + type check
-vp run test -r  # run tests across the workspace
-vp run build -r # build the workspace
-vp run ready    # fmt + lint + test + build (the full pre-push gate)
+vp check         # format + lint + type check
+vp run -r test   # run tests across the workspace
+vp run -r build  # build the workspace
+vp run ready     # fmt + lint + test + build (the full pre-push gate)
 ```
 
 ---
@@ -164,18 +197,25 @@ apps/
       index.ts        # issuer: providers, success -> role in subject
       register-ui.ts  # registration screen with the role dropdown
       users.ts        # Drizzle user store (getUser / setRole)
-      roles.ts        # Press | Staff | Admin
       db/
         schema.ts     # users table + role enum
         index.ts      # Drizzle client
         migrations/   # committed SQL migrations
     docker-compose.yml
     drizzle.config.ts
+  api/
+    src/
+      main.ts         # bootstrap: env, CORS, listen
+      app.module.ts   # wires AuthModule + controllers
+      admin/          # role-guarded example controller
+      auth/           # JWKS verification, guards, decorators
+    test/             # Vitest e2e specs (supertest)
   website/
     server/auth.ts    # OAuth flow, session cookie, role redirect, 404
     src/main.ts       # SPA views per role
-    src/subjects.ts   # must stay in sync with apps/auth/auth/subjects.ts
+    src/lib/session.tsx
 packages/
+  auth-contract/      # roles + access-token subject schema (shared)
   ui/
   utils/
 ```
