@@ -10,6 +10,7 @@ import {
   isTerminalStatus,
   MEDIA_REQUEST_STATUSES,
   mediaRequestListQuerySchema,
+  regenerateMediaRequestSchema,
   rejectMediaRequestSchema,
   submitMediaRequestSchema,
   toRequestSummary,
@@ -42,13 +43,12 @@ test("only staff decisions leave the review queue", () => {
   expect(isOpenStatus("withdrawn")).toBe(false);
 });
 
-test("submission trims fields and accepts an ISO deadline", () => {
+test("submission trims fields", () => {
   const result = safeParse(submitMediaRequestSchema, {
     fullName: "  Sipho Dlamini ",
     claim: "  Is it true that inflation fell to 2% in July 2026? ",
     context: "  Following a report on a news site. ",
     outlet: "  The Daily Line ",
-    deadline: "2026-09-20T10:00:00.000Z",
   });
   expect(result.success).toBe(true);
   expect(result.output).toMatchObject({
@@ -59,18 +59,11 @@ test("submission trims fields and accepts an ISO deadline", () => {
   });
 });
 
-test("submission rejects a short claim and an invalid deadline", () => {
+test("submission rejects a short claim", () => {
   expect(
     safeParse(submitMediaRequestSchema, {
       fullName: "Sipho Dlamini",
       claim: "too short",
-    }).success,
-  ).toBe(false);
-  expect(
-    safeParse(submitMediaRequestSchema, {
-      fullName: "Sipho Dlamini",
-      claim: "Is it true that inflation fell to 2%?",
-      deadline: "next Tuesday",
     }).success,
   ).toBe(false);
 });
@@ -86,6 +79,27 @@ test("updates can clear the assignee and carry a note", () => {
     status: "awaiting_review",
     assignedTo: null,
     note: "Picking this up.",
+  });
+});
+
+test("reviewer guidance is optional, trimmed and bounded", () => {
+  const empty = safeParse(regenerateMediaRequestSchema, {});
+  expect(empty.success).toBe(true);
+  if (!empty.success) return;
+  expect(empty.output.guidance).toBeUndefined();
+
+  const guided = safeParse(regenerateMediaRequestSchema, {
+    guidance: "  Emphasise core inflation alongside the headline figure.  ",
+  });
+  expect(guided.success).toBe(true);
+  if (!guided.success) return;
+  expect(guided.output.guidance).toBe("Emphasise core inflation alongside the headline figure.");
+
+  expect(safeParse(regenerateMediaRequestSchema, { guidance: "x".repeat(2001) }).success).toBe(
+    false,
+  );
+  expect(safeParse(updateMediaRequestSchema, { guidance: "  " }).output).toMatchObject({
+    guidance: "",
   });
 });
 
@@ -130,7 +144,6 @@ const publicRequest: MediaRequestPublic = {
   claim: "Is it true that headline inflation fell to 2% in July 2026?",
   context: null,
   outlet: "The Daily Line",
-  deadline: null,
   approvedResponse: null,
   approvedSources: [],
   approvedAt: null,
@@ -150,7 +163,6 @@ test("summarises a request without leaking reviewer-only fields", () => {
     reference: "MEDIA-2026-ABC123",
     status: "approved",
     claim: "Is it true that headline inflation fell to 2% in July 2026?",
-    deadline: null,
     createdAt: "2026-09-18T00:00:00.000Z",
     hasResponse: true,
   });

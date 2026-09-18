@@ -1,0 +1,1 @@
+ALTER TABLE "media_requests" ADD COLUMN "reviewer_guidance" text;

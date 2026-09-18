@@ -8,7 +8,7 @@ The shared media-room surface:
   `rejectMediaRequest`, `regenerateMediaRequest`, `addMediaNote` — the reviewer client.
 - `RequestFile` — the request case file, with `DraftCard` (always badged as AI-generated and
   unreviewed) and `SourceReferences` for the grounded citations.
-- `StatusBadge`, `RequestTimeline`, `deadlinePhrase`, `formatDate`, `fieldErrors`.
+- `StatusBadge`, `RequestTimeline`, `formatDate`, `fieldErrors`.
 
 `apps/media-portal` (requester surface) and `apps/control-centre` (media desk) both consume this
 package.

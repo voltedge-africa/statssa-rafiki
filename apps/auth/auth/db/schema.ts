@@ -102,7 +102,7 @@ export const mediaRequests = pgTable(
     outlet: text("outlet"),
     claim: text("claim").notNull(),
     context: text("context"),
-    deadline: timestamp("deadline", { withTimezone: true }),
+    reviewerGuidance: text("reviewer_guidance"),
     aiDraft: text("ai_draft"),
     aiSources: jsonb("ai_sources"),
     aiGap: text("ai_gap"),

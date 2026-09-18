@@ -36,6 +36,7 @@ class FakeRepository {
     const record: MediaRequestRecord = {
       ...request,
       status: "submitted",
+      reviewerGuidance: null,
       aiDraft: null,
       aiSources: null,
       aiGap: null,
@@ -141,6 +142,7 @@ class FakeRepository {
         this.users.find((user) => user.id === patch.assignedTo)?.email ?? null;
     }
     if (patch.closedAt !== undefined) record.closedAt = patch.closedAt;
+    if (patch.reviewerGuidance !== undefined) record.reviewerGuidance = patch.reviewerGuidance;
     if (patch.aiDraft !== undefined) record.aiDraft = patch.aiDraft;
     if (patch.aiSources !== undefined) record.aiSources = patch.aiSources;
     if (patch.aiGap !== undefined) record.aiGap = patch.aiGap;
@@ -176,9 +178,15 @@ class FakeDraftService {
   };
 
   calls = 0;
+  lastGuidance: string | null = null;
 
-  async generate(): Promise<MediaDraftResult> {
+  async generate(
+    _claim?: string,
+    _context?: string | null,
+    guidance: string | null = null,
+  ): Promise<MediaDraftResult> {
     this.calls += 1;
+    this.lastGuidance = guidance;
     return this.result;
   }
 }
@@ -270,6 +278,7 @@ describe("MediaService", () => {
 
     const tracking = await service.trackForOwner(reference, press);
     expect(tracking).not.toHaveProperty("draft");
+    expect(tracking).not.toHaveProperty("reviewerGuidance");
     expect(tracking.events.every((event) => event.visibility === "requester")).toBe(true);
 
     const detail = await service.detail(reference);
@@ -385,9 +394,52 @@ describe("MediaService", () => {
       model: "test/model",
     } satisfies MediaDraftResult;
 
-    await service.regenerate(reference, staff);
+    await service.regenerate(reference, {}, staff);
     await waitForStatus(fake, "awaiting_review");
     expect(fake.requests[0]?.aiDraft).toContain("fresh grounded draft");
+  });
+
+  it("stores reviewer guidance and records it on the timeline", async () => {
+    await service.submit(submission, press);
+    await waitForStatus(fake, "awaiting_review");
+    const reference = fake.requests[0]?.reference ?? "";
+
+    const updated = await service.update(
+      reference,
+      { guidance: "  Emphasise core inflation.  " },
+      staff,
+    );
+
+    expect(updated.reviewerGuidance).toBe("Emphasise core inflation.");
+    expect(fake.requests[0]?.reviewerGuidance).toBe("Emphasise core inflation.");
+
+    const events = fake.events.get(fake.requests[0]?.id ?? "") ?? [];
+    expect(events.at(-1)).toMatchObject({ kind: "note", visibility: "internal" });
+  });
+
+  it("clears reviewer guidance when an empty string is sent", async () => {
+    await service.submit(submission, press);
+    await waitForStatus(fake, "awaiting_review");
+    const reference = fake.requests[0]?.reference ?? "";
+    await service.update(reference, { guidance: "Cover core inflation." }, staff);
+
+    const cleared = await service.update(reference, { guidance: "" }, staff);
+    expect(cleared.reviewerGuidance).toBeNull();
+  });
+
+  it("regenerates with the stored guidance and can update it in one call", async () => {
+    await service.submit(submission, press);
+    await waitForStatus(fake, "awaiting_review");
+    const reference = fake.requests[0]?.reference ?? "";
+    await service.update(reference, { guidance: "Emphasise core inflation." }, staff);
+
+    await service.regenerate(reference, {}, staff);
+    await vi.waitFor(() => expect(drafts.lastGuidance).toBe("Emphasise core inflation."));
+    await waitForStatus(fake, "awaiting_review");
+
+    await service.regenerate(reference, { guidance: "Cover the monthly change too." }, staff);
+    await vi.waitFor(() => expect(drafts.lastGuidance).toBe("Cover the monthly change too."));
+    expect(fake.requests[0]?.reviewerGuidance).toBe("Cover the monthly change too.");
   });
 
   it("returns only the requester's own requests, as summaries with a total", async () => {

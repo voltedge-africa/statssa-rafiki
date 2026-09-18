@@ -1,5 +1,4 @@
 import {
-  check,
   maxLength,
   minLength,
   nullable,
@@ -123,17 +122,6 @@ export const submitMediaRequestSchema = object({
   ),
   context: optionalText(5000),
   outlet: optionalText(200),
-  deadline: optional(
-    pipe(
-      string(),
-      trim(),
-      check(
-        (value) => value === "" || !Number.isNaN(Date.parse(value)),
-        "Enter a valid date and time.",
-      ),
-      maxLength(40, "Enter a valid date and time."),
-    ),
-  ),
 });
 
 export type SubmitMediaRequestInput = InferOutput<typeof submitMediaRequestSchema>;
@@ -143,9 +131,18 @@ export const updateMediaRequestSchema = object({
   status: optional(picklist(MEDIA_REQUEST_STATUSES)),
   assignedTo: optional(nullable(pipe(string(), trim(), maxLength(320)))),
   note: optional(pipe(string(), trim(), maxLength(2000))),
+  /** Persistent guidance the reviewer gives the drafting assistant. Empty clears it. */
+  guidance: optional(pipe(string(), trim(), maxLength(2000, "Use 2000 characters or fewer."))),
 });
 
 export type UpdateMediaRequestInput = InferOutput<typeof updateMediaRequestSchema>;
+
+/** Body of `POST /media/requests/:reference/regenerate` (Staff/Admin). */
+export const regenerateMediaRequestSchema = object({
+  guidance: optional(pipe(string(), trim(), maxLength(2000, "Use 2000 characters or fewer."))),
+});
+
+export type RegenerateMediaRequestInput = InferOutput<typeof regenerateMediaRequestSchema>;
 
 /** Body of `POST /media/requests/:reference/approve` (Staff/Admin). */
 export const approveMediaRequestSchema = object({
@@ -222,7 +219,6 @@ export interface MediaRequestPublic {
   claim: string;
   context: string | null;
   outlet: string | null;
-  deadline: string | null;
   approvedResponse: string | null;
   approvedSources: MediaDraftSource[];
   approvedAt: string | null;
@@ -237,7 +233,6 @@ export interface MediaRequestSummary {
   reference: string;
   status: MediaRequestStatus;
   claim: string;
-  deadline: string | null;
   createdAt: string;
   /** True once a Staff/Admin approval has released an official response. */
   hasResponse: boolean;
@@ -248,7 +243,6 @@ export function toRequestSummary(request: MediaRequestPublic): MediaRequestSumma
     reference: request.reference,
     status: request.status,
     claim: request.claim,
-    deadline: request.deadline,
     createdAt: request.createdAt,
     hasResponse: request.approvedResponse !== null,
   };
@@ -300,6 +294,8 @@ export interface MediaRequestStaff extends MediaRequestPublic {
   assignedTo: string | null;
   assignedToEmail: string | null;
   draft: MediaAiDraft | null;
+  /** Guidance the reviewer has given the drafting assistant; reused on every regenerate. */
+  reviewerGuidance: string | null;
 }
 
 /** A staff request plus its full timeline, including internal notes. */

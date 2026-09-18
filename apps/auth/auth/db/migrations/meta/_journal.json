@@ -22,6 +22,20 @@
       "when": 1789706086916,
       "tag": "0002_sticky_ricochet",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789765464973,
+      "tag": "0003_noisy_forge",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789767024480,
+      "tag": "0004_equal_killer_shrike",
+      "breakpoints": true
     }
   ]
 }

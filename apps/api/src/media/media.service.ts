@@ -26,6 +26,7 @@ import {
   type MediaRequestStatus,
   type MediaRequestSummaryListResponse,
   type MediaRequestTracking,
+  type RegenerateMediaRequestInput,
   type RejectMediaRequestInput,
   type SubmitMediaRequestInput,
   type UpdateMediaRequestInput,
@@ -84,7 +85,6 @@ function toPublicView(record: MediaRequestRecord): MediaRequestPublic {
     claim: record.claim,
     context: record.context,
     outlet: record.outlet,
-    deadline: record.deadline?.toISOString() ?? null,
     approvedResponse: record.approvedResponse,
     approvedSources: record.approvedSources ?? [],
     approvedAt: record.approvedAt?.toISOString() ?? null,
@@ -115,6 +115,7 @@ function toStaffView(record: MediaRequestRecord): MediaRequestStaff {
     assignedTo: record.assignedTo,
     assignedToEmail: record.assignedToEmail,
     draft: toDraftView(record),
+    reviewerGuidance: record.reviewerGuidance,
   };
 }
 
@@ -144,6 +145,20 @@ function toStaffDetail(
   };
 }
 
+function guidanceEvent(
+  guidance: string | null,
+  actorId: string,
+  actorLabel: string,
+): NewMediaEvent {
+  return {
+    kind: "note",
+    visibility: "internal",
+    actorId,
+    actorLabel,
+    message: guidance ? `Guidance for Rafiki updated: ${guidance}` : "Guidance for Rafiki cleared.",
+  };
+}
+
 @Injectable()
 export class MediaService {
   private readonly logger = new Logger(MediaService.name);
@@ -165,7 +180,6 @@ export class MediaService {
         outlet: input.outlet?.trim() ? input.outlet.trim() : null,
         claim: input.claim,
         context: input.context?.trim() ? input.context.trim() : null,
-        deadline: input.deadline?.trim() ? new Date(input.deadline) : null,
       },
       {
         kind: "submitted",
@@ -350,6 +364,14 @@ export class MediaService {
       }
     }
 
+    if (input.guidance !== undefined) {
+      const guidance = input.guidance.trim() ? input.guidance.trim() : null;
+      if (guidance !== (record.reviewerGuidance ?? null)) {
+        patch.reviewerGuidance = guidance;
+        events.push(guidanceEvent(guidance, user.id, actorLabel));
+      }
+    }
+
     if (Object.keys(patch).length === 0 && events.length === 0) {
       throw new BadRequestException("Nothing to update.");
     }
@@ -358,7 +380,11 @@ export class MediaService {
     return this.detail(reference);
   }
 
-  async regenerate(reference: string, user: AuthUser): Promise<MediaRequestStaffDetail> {
+  async regenerate(
+    reference: string,
+    input: RegenerateMediaRequestInput,
+    user: AuthUser,
+  ): Promise<MediaRequestStaffDetail> {
     const record = await this.repo.findByReference(reference);
     if (!record) throw new NotFoundException("Request not found.");
     if (record.status === "analysing") {
@@ -369,7 +395,15 @@ export class MediaService {
     }
 
     const actorLabel = await this.actorLabel(user);
-    await this.repo.applyUpdate(record.id, { status: "analysing" }, [
+    const guidance =
+      input.guidance !== undefined
+        ? input.guidance.trim()
+          ? input.guidance.trim()
+          : null
+        : record.reviewerGuidance;
+
+    const patch: MediaRequestPatch = { status: "analysing" };
+    const events: NewMediaEvent[] = [
       {
         kind: "status_changed",
         visibility: "requester",
@@ -379,9 +413,14 @@ export class MediaService {
         actorLabel,
         message: "A fresh draft is being prepared.",
       },
-    ]);
+    ];
+    if (guidance !== record.reviewerGuidance) {
+      patch.reviewerGuidance = guidance;
+      events.push(guidanceEvent(guidance, user.id, actorLabel));
+    }
 
-    void this.generate(record, "analysing");
+    await this.repo.applyUpdate(record.id, patch, events);
+    void this.generate(record, "analysing", guidance);
     return this.detail(reference);
   }
 
@@ -508,10 +547,14 @@ export class MediaService {
     }
   }
 
-  private async generate(record: MediaRequestRecord, from: MediaRequestStatus): Promise<void> {
+  private async generate(
+    record: MediaRequestRecord,
+    from: MediaRequestStatus,
+    guidance: string | null = record.reviewerGuidance,
+  ): Promise<void> {
     let result: MediaDraftResult;
     try {
-      result = await this.drafts.generate(record.claim, record.context);
+      result = await this.drafts.generate(record.claim, record.context, guidance);
     } catch (error) {
       await this.generationFailed(record, error);
       return;
@@ -522,7 +565,7 @@ export class MediaService {
       ? result.gap
       : `Draft prepared from ${result.sources.length} approved source passage${
           result.sources.length === 1 ? "" : "s"
-        }.`;
+        }.${guidance?.trim() ? " Reviewer guidance applied." : ""}`;
 
     try {
       await this.repo.applyUpdate(

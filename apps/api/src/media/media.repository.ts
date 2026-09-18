@@ -21,7 +21,7 @@ export interface MediaRequestRecord {
   outlet: string | null;
   claim: string;
   context: string | null;
-  deadline: Date | null;
+  reviewerGuidance: string | null;
   aiDraft: string | null;
   aiSources: MediaDraftSource[] | null;
   aiGap: string | null;
@@ -60,7 +60,6 @@ export interface NewMediaRequest {
   outlet: string | null;
   claim: string;
   context: string | null;
-  deadline: Date | null;
 }
 
 export interface NewMediaEvent {
@@ -77,6 +76,7 @@ export interface MediaRequestPatch {
   status?: MediaRequestStatus;
   assignedTo?: string | null;
   closedAt?: Date | null;
+  reviewerGuidance?: string | null;
   aiDraft?: string | null;
   aiSources?: MediaDraftSource[] | null;
   aiGap?: string | null;
@@ -133,7 +133,8 @@ function toJson(value: MediaDraftSource[]): postgres.JSONValue {
 const REQUEST_COLUMNS = `
   r.id, r.reference, r.status,
   r.requester_name AS "requesterName", r.requester_email AS "requesterEmail",
-  r.requester_id AS "requesterId", r.outlet, r.claim, r.context, r.deadline,
+  r.requester_id AS "requesterId", r.outlet, r.claim, r.context,
+  r.reviewer_guidance AS "reviewerGuidance",
   r.ai_draft AS "aiDraft", r.ai_sources AS "aiSources", r.ai_gap AS "aiGap",
   r.ai_model AS "aiModel", r.ai_generated_at AS "aiGeneratedAt",
   r.approved_response AS "approvedResponse", r.approved_sources AS "approvedSources",
@@ -146,7 +147,8 @@ const REQUEST_COLUMNS = `
 const RETURNING_COLUMNS = `
   id, reference, status,
   requester_name AS "requesterName", requester_email AS "requesterEmail",
-  requester_id AS "requesterId", outlet, claim, context, deadline,
+  requester_id AS "requesterId", outlet, claim, context,
+  reviewer_guidance AS "reviewerGuidance",
   ai_draft AS "aiDraft", ai_sources AS "aiSources", ai_gap AS "aiGap",
   ai_model AS "aiModel", ai_generated_at AS "aiGeneratedAt",
   approved_response AS "approvedResponse", approved_sources AS "approvedSources",
@@ -187,12 +189,12 @@ export class MediaRepository implements OnModuleDestroy {
       const [row] = await tx<MediaRequestRecord[]>`
         INSERT INTO media_requests (
           id, reference, status, requester_name, requester_email, requester_id,
-          outlet, claim, context, deadline
+          outlet, claim, context
         )
         VALUES (
           ${request.id}, ${request.reference}, 'submitted',
           ${request.requesterName}, ${request.requesterEmail}, ${request.requesterId},
-          ${request.outlet}, ${request.claim}, ${request.context}, ${request.deadline}
+          ${request.outlet}, ${request.claim}, ${request.context}
         )
         RETURNING ${tx.unsafe(RETURNING_COLUMNS)}
       `;
@@ -326,6 +328,7 @@ export class MediaRepository implements OnModuleDestroy {
       status: "status",
       assignedTo: "assigned_to",
       closedAt: "closed_at",
+      reviewerGuidance: "reviewer_guidance",
       aiDraft: "ai_draft",
       aiGap: "ai_gap",
       aiModel: "ai_model",

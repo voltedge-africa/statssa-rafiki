@@ -430,7 +430,6 @@ interface MediaSeed {
   outlet?: string | null;
   claim: string;
   context?: string | null;
-  deadline?: Date | null;
   aiDraft?: string | null;
   aiSources?: MediaDraftSource[] | null;
   aiGap?: string | null;
@@ -458,7 +457,6 @@ const MEDIA_SEEDS: MediaSeed[] = [
     outlet: "The Daily Line",
     claim: "Is it true that headline inflation fell to 2,1% in July 2026?",
     context: "A minister cited this figure in a speech this morning.",
-    deadline: inDays(1),
     createdAt: agoHours(2),
     updatedAt: agoHours(2),
     events: [
@@ -479,7 +477,6 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterId: AMARA,
     outlet: "News24",
     claim: "What was the CPI index reading for June 2026?",
-    deadline: inDays(2),
     assignedTo: STAFF,
     createdAt: agoHours(5),
     updatedAt: agoHours(1),
@@ -515,7 +512,6 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterId: PRESS,
     outlet: "SABC News",
     claim: "How does headline inflation compare with core inflation for 2025?",
-    deadline: inDays(1),
     assignedTo: STAFF,
     aiDraft:
       "Headline inflation is the annual change in the all items CPI, the full basket of goods and services bought by urban households [sample/cpi-index.md#1]. In July 2026 headline inflation was 4,3%, down from 5,0% in June 2026 [sample/headline-vs-core-inflation.md#1].\n\nCore inflation removes food and fuel prices, which move around for temporary reasons, so it shows the underlying trend. In July 2026 the core measure was 4,2% [sample/headline-vs-core-inflation.md#1].",
@@ -560,7 +556,6 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterEmail: "ahmed.patel@example.co.za",
     outlet: "Mail & Guardian",
     claim: "What is the projected population of a new district in 2035?",
-    deadline: inDays(3),
     assignedTo: NALEDI,
     aiGap:
       "Approved Stats SA sources do not contain a 2035 district population projection, so no response was drafted.",
@@ -600,7 +595,6 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterId: GRACE,
     outlet: "Business Day",
     claim: "What was headline inflation in July 2026 and how did it change from June?",
-    deadline: inDays(-1),
     assignedTo: STAFF,
     aiDraft:
       "Annual consumer price inflation was 4,3% in July 2026, down from 5,0% in June 2026 [sample/cpi-index.md#1].",
@@ -652,7 +646,6 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterEmail: "peter.vanwyk@example.co.za",
     outlet: "The Citizen",
     claim: "Please confirm the market share of a private retailer in the food sector.",
-    deadline: inDays(-2),
     assignedTo: STAFF,
     rejectedReason:
       "Stats SA does not publish company-level market share data. The request falls outside our published statistics.",
@@ -690,7 +683,6 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterEmail: "fatima.cassim@example.co.za",
     outlet: "Daily Maverick",
     claim: "What is the unemployment rate for the first quarter of 2026?",
-    deadline: inDays(3),
     createdAt: agoDays(1),
     updatedAt: agoHours(6),
     closedAt: agoHours(6),
@@ -785,7 +777,6 @@ async function seed(): Promise<void> {
         outlet: seed.outlet ?? null,
         claim: seed.claim,
         context: seed.context ?? null,
-        deadline: seed.deadline ?? null,
         aiDraft: seed.aiDraft ?? null,
         aiSources: seed.aiSources ?? null,
         aiGap: seed.aiGap ?? null,

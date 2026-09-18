@@ -79,6 +79,36 @@ describe("MediaDraftService", () => {
     expect(prompt.system).toContain("INFORMATION_GAP");
   });
 
+  it("uses claim and context alone for retrieval when there is no guidance", async () => {
+    retrieveMock.mockResolvedValue(hits);
+    const { service } = makeService();
+
+    await service.generate("Did inflation fall to 2%?", "Context here.");
+
+    expect(retrieveMock).toHaveBeenCalledWith("Did inflation fall to 2%?\n\nContext here.", 8);
+  });
+
+  it("threads reviewer guidance into retrieval and the prompt", async () => {
+    retrieveMock.mockResolvedValue(hits);
+    const { complete, service } = makeService();
+
+    const result = await service.generate(
+      "Did inflation fall to 2%?",
+      null,
+      "Emphasise core inflation alongside the headline figure.",
+    );
+
+    expect(result.text).toContain("[cpi-index#4]");
+    expect(retrieveMock).toHaveBeenCalledWith(
+      expect.stringContaining("Emphasise core inflation alongside the headline figure."),
+      8,
+    );
+
+    const prompt = complete.mock.calls[0]?.[0] as unknown as { system: string; user: string };
+    expect(prompt.user).toContain("Emphasise core inflation alongside the headline figure.");
+    expect(prompt.system.toLowerCase()).toContain("guidance");
+  });
+
   it("keeps all retrieved passages when the model cites nothing", async () => {
     retrieveMock.mockResolvedValue(hits);
     const complete = vi.fn(async () => ({ text: "A general answer.", model: "test/model" }));

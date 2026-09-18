@@ -26,7 +26,6 @@ const submitted = {
   claim: "Is it true that headline inflation fell to 2% in July 2026?",
   context: null,
   outlet: "The Daily Line",
-  deadline: null,
   approvedResponse: null,
   approvedSources: [],
   approvedAt: null,
@@ -263,6 +262,17 @@ describe("media api", () => {
       users["admin-token"],
     );
 
+    const guidance = await request(app.getHttpServer())
+      .patch("/media/requests/MEDIA-2026-ABC123")
+      .set("Authorization", "Bearer staff-token")
+      .send({ guidance: "Cover core inflation too." });
+    expect(guidance.status).toBe(200);
+    expect(media.update).toHaveBeenLastCalledWith(
+      "MEDIA-2026-ABC123",
+      { guidance: "Cover core inflation too." },
+      users["staff-token"],
+    );
+
     const invalid = await request(app.getHttpServer())
       .patch("/media/requests/MEDIA-2026-ABC123")
       .set("Authorization", "Bearer staff-token")
@@ -308,12 +318,34 @@ describe("media api", () => {
     );
   });
 
-  it("regenerates a draft and adds case notes", async () => {
+  it("regenerates a draft with reviewer guidance and adds case notes", async () => {
     const regenerated = await request(app.getHttpServer())
       .post("/media/requests/MEDIA-2026-ABC123/regenerate")
-      .set("Authorization", "Bearer staff-token");
+      .set("Authorization", "Bearer staff-token")
+      .send({ guidance: "  Emphasise core inflation.  " });
     expect(regenerated.status).toBe(201);
-    expect(media.regenerate).toHaveBeenCalledWith("MEDIA-2026-ABC123", users["staff-token"]);
+    expect(media.regenerate).toHaveBeenCalledWith(
+      "MEDIA-2026-ABC123",
+      { guidance: "Emphasise core inflation." },
+      users["staff-token"],
+    );
+
+    const plain = await request(app.getHttpServer())
+      .post("/media/requests/MEDIA-2026-ABC123/regenerate")
+      .set("Authorization", "Bearer staff-token")
+      .send({});
+    expect(plain.status).toBe(201);
+    expect(media.regenerate).toHaveBeenLastCalledWith(
+      "MEDIA-2026-ABC123",
+      {},
+      users["staff-token"],
+    );
+
+    const tooLong = await request(app.getHttpServer())
+      .post("/media/requests/MEDIA-2026-ABC123/regenerate")
+      .set("Authorization", "Bearer staff-token")
+      .send({ guidance: "x".repeat(2001) });
+    expect(tooLong.status).toBe(400);
 
     const note = await request(app.getHttpServer())
       .post("/media/requests/MEDIA-2026-ABC123/notes")

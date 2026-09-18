@@ -8,6 +8,7 @@ import type {
   MediaRequestStatus,
   MediaRequestSummaryListResponse,
   MediaRequestTracking,
+  RegenerateMediaRequestInput,
   RejectMediaRequestInput,
   SubmitMediaRequestInput,
   UpdateMediaRequestInput,
@@ -147,10 +148,10 @@ export function rejectMediaRequest(reference: string, input: RejectMediaRequestI
   );
 }
 
-export function regenerateMediaRequest(reference: string) {
+export function regenerateMediaRequest(reference: string, input: RegenerateMediaRequestInput = {}) {
   return request<{ request: MediaRequestStaffDetail }>(
     `/requests/${encodeURIComponent(reference)}/regenerate`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(input) },
   );
 }
 

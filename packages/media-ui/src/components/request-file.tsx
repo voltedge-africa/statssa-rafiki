@@ -42,9 +42,8 @@ export function RequestFile({
         <StatusBadge status={request.status} />
       </div>
 
-      <dl className="grid gap-px border-b border-border bg-border sm:grid-cols-3">
+      <dl className="grid gap-px border-b border-border bg-border sm:grid-cols-2">
         <Fact label="submitted" value={formatDate(request.createdAt)} />
-        <Fact label="deadline" value={formatDate(request.deadline)} />
         <Fact label="last update" value={formatDate(request.updatedAt)} />
       </dl>
 
@@ -82,7 +81,7 @@ export function RequestFile({
         ) : null}
       </div>
 
-      {draft ? (
+      {draft && !request.approvedResponse ? (
         <div className="border-t border-border px-5 py-5">
           <DraftCard draft={draft} onOpenSource={onOpenSource} />
         </div>
@@ -99,10 +98,7 @@ export function RequestFile({
               reviewed by Stats SA
             </Badge>
           </div>
-          <PlainMarkdown
-            className="max-w-[68ch] text-sm leading-relaxed"
-            onOpenDocument={onOpenSource}
-          >
+          <PlainMarkdown className="text-sm leading-relaxed" onOpenDocument={onOpenSource}>
             {request.approvedResponse}
           </PlainMarkdown>
           <div className="flex flex-col gap-3 border-t border-border pt-4">

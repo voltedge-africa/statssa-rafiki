@@ -15,6 +15,7 @@ import {
   createMediaNoteSchema,
   isMediaRequestStatus,
   mediaRequestListQuerySchema,
+  regenerateMediaRequestSchema,
   rejectMediaRequestSchema,
   submitMediaRequestSchema,
   updateMediaRequestSchema,
@@ -160,11 +161,19 @@ export class MediaController {
     return { request: await this.media.reject(reference.toUpperCase(), parsed.output, user) };
   }
 
-  /** Ask for a fresh grounded draft (for example after the retrieval index changes). */
+  /** Ask for a fresh grounded draft, optionally with reviewer guidance (for example after the retrieval index changes). */
   @Post(":reference/regenerate")
   @Roles("Staff", "Admin")
-  async regenerate(@Param("reference") reference: string, @CurrentUser() user: AuthUser) {
-    return { request: await this.media.regenerate(reference.toUpperCase(), user) };
+  async regenerate(
+    @Param("reference") reference: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const parsed = safeParse(regenerateMediaRequestSchema, body ?? {});
+    if (!parsed.success) throw validationError(parsed.issues);
+    return {
+      request: await this.media.regenerate(reference.toUpperCase(), parsed.output, user),
+    };
   }
 
   @Post(":reference/notes")
