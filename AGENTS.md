@@ -25,3 +25,25 @@ release. Add a tool name to select part of the graph. For example, run
 - [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
 
 <!--VITE PLUS END-->
+
+# Never hang a command
+
+**Never leave a shell command running without a bound.** A hung command blocks the user
+and wastes their time. Treat every command as if it must return in seconds.
+
+- **Always bound it.** Pass the tool timeout and, for anything that could stall, wrap it in
+  `timeout <seconds> <command>`. If a command might not exit on its own, assume it won't.
+- **Never run blocking processes in the foreground.** Dev servers, watchers, `nest start`,
+  `vp dev`, `vp test watch`, Storybook, `docker compose logs -f`, etc. must be started
+  detached — `setsid nohup <command> > /tmp/opencode/<name>.log 2>&1 < /dev/null &` — then
+  verified with one short, bounded check (curl/`ss`), not by tailing or waiting.
+- **Never `pkill -f <pattern>` or `pgrep -f <pattern>` when the pattern can match the
+  invoking shell's own command line.** That kills the shell and the command hangs. Kill by
+  PID or process group read from `ss -ltnp` / `ps`, by port (`fuser -k 3002/tcp`), or make
+  the pattern not self-match (e.g. `[n]est start`).
+- **Cap every wait.** No unbounded `sleep`, `wait`, retry loop, or log tail. Sleep only for
+  a fixed, short interval and give up after a bounded number of checks.
+- **Prefer the cheapest proof.** One quick query, `rg`, or HTTP request beats a full build,
+  model load, or recursive run. Do not repeat heavy verification that already passed.
+- **If something does hang, kill it before retrying** — a stuck process holding a port or
+  lock is a common cause of every subsequent command hanging too.
