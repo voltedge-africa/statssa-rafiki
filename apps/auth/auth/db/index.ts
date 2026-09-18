@@ -1,8 +1,11 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { orDefault } from "../env.ts";
 
-const connectionString =
-  process.env.DATABASE_URL ?? "postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth";
+const connectionString = orDefault(
+  "DATABASE_URL",
+  "postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth",
+);
 
 function createDb() {
   const client = postgres(connectionString, { max: 5 });

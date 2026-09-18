@@ -5,6 +5,7 @@ import { PasswordProvider } from "@openauthjs/openauth/provider/password";
 import { MemoryStorage } from "@openauthjs/openauth/storage/memory";
 import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { createTransport } from "nodemailer";
+import { list, numberOrDefault, optional, orDefault } from "./env.ts";
 import { withProviderList } from "./provider-list-ui.ts";
 import { withRole } from "./register-ui.ts";
 import { subjects } from "@voltedge/auth-contract";
@@ -15,17 +16,13 @@ const persistFile = resolve(dirname(fileURLToPath(import.meta.url)), "../.openau
 
 // Extra hosts (scheme://host) whose redirect URIs this issuer accepts, in addition to
 // localhost/127.0.0.1 which OpenAuth allows by default. E.g. a tailnet host while developing.
-const allowedHosts = (process.env.AUTH_ALLOWED_ORIGINS ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean)
-  .map((origin) => {
-    try {
-      return new URL(origin).host;
-    } catch {
-      return origin;
-    }
-  });
+const allowedHosts = list("AUTH_ALLOWED_ORIGINS").map((origin) => {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return origin;
+  }
+});
 
 function isAllowed(redirectURI: string, req: Request) {
   const { hostname } = new URL(redirectURI);
@@ -42,12 +39,12 @@ function isAllowed(redirectURI: string, req: Request) {
   return allowedHosts.includes(new URL(redirectURI).host);
 }
 
-const smtpUser = process.env.SMTP_USER;
-const smtpPass = process.env.SMTP_PASS;
+const smtpUser = optional("SMTP_USER");
+const smtpPass = optional("SMTP_PASS");
 
 const mailer = createTransport({
-  host: process.env.SMTP_HOST ?? "sandbox.smtp.mailtrap.io",
-  port: Number(process.env.SMTP_PORT ?? 2525),
+  host: orDefault("SMTP_HOST", "sandbox.smtp.mailtrap.io"),
+  port: numberOrDefault("SMTP_PORT", 2525),
   auth: {
     user: smtpUser,
     pass: smtpPass,
@@ -65,7 +62,7 @@ async function sendCode(email: string, code: string) {
 
   try {
     const info = await mailer.sendMail({
-      from: process.env.SMTP_FROM ?? "Stats SA Rafiki <no-reply@statssa.gov.za>",
+      from: orDefault("SMTP_FROM", "Stats SA Rafiki <no-reply@statssa.gov.za>"),
       to: email,
       subject: "Your Stats SA Rafiki verification code",
       text: `Your verification code is ${code}. It expires in 10 minutes.`,
@@ -113,7 +110,7 @@ const password = withProviderList({
   register: withRole(passwordUI.register),
 });
 
-export default issuer({
+const app = issuer({
   subjects,
   theme,
   // Dev-only persistence so accounts and signing keys survive a restart.
@@ -134,3 +131,10 @@ export default issuer({
     throw new Error("Invalid provider");
   },
 });
+
+// Bun serves this default export. Naming the port lets AUTH_PORT from .env (or PORT, from the
+// `server` script) control the listener that apps/api and apps/website derive the issuer from.
+export default {
+  port: numberOrDefault("AUTH_PORT", numberOrDefault("PORT", 3001)),
+  fetch: app.fetch,
+};

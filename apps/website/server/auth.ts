@@ -2,10 +2,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient } from "@openauthjs/openauth/client";
 import type { Plugin } from "vite";
 import { subjects } from "@voltedge/auth-contract";
+import type { ServerEnv } from "./env.ts";
 
 const CLIENT_ID = "website";
-const AUTH_PORT = process.env.AUTH_PORT ?? "3001";
-const ISSUER_OVERRIDE = process.env.VITE_AUTH_ISSUER;
 const ACCESS_COOKIE = "website_access";
 const REFRESH_COOKIE = "website_refresh";
 const CHALLENGE_COOKIE = "website_challenge";
@@ -130,15 +129,15 @@ function requestOrigin(req: IncomingMessage) {
 // The auth server runs alongside this app on AUTH_PORT, so reach it through the same hostname
 // the browser used. This keeps the flow working locally and from another machine over a tailnet
 // without hardcoding localhost. Set VITE_AUTH_ISSUER to override (eg. an HTTPS proxy).
-function issuerFor(req: IncomingMessage) {
-  if (ISSUER_OVERRIDE) return ISSUER_OVERRIDE;
-  return `${requestProto(req)}://${requestHostname(req)}:${AUTH_PORT}`;
+function issuerFor(req: IncomingMessage, env: ServerEnv) {
+  if (env.authIssuer) return env.authIssuer;
+  return `${requestProto(req)}://${requestHostname(req)}:${env.authPort}`;
 }
 
 const clients = new Map<string, ReturnType<typeof createClient>>();
 
-function getClient(req: IncomingMessage) {
-  const issuer = issuerFor(req);
+function getClient(req: IncomingMessage, env: ServerEnv) {
+  const issuer = issuerFor(req, env);
   let client = clients.get(issuer);
   if (!client) {
     client = createClient({ clientID: CLIENT_ID, issuer });
@@ -185,12 +184,12 @@ function redirect(res: ServerResponse, location: string, cookies: string[] = [])
   res.end();
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, next: () => void) {
+async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse, next: () => void) {
   const path = (req.url ? new URL(req.url, requestOrigin(req)).pathname : "") || "";
 
   if (path === "/auth/login") {
     const redirectURI = `${requestOrigin(req)}/callback`;
-    const { url, challenge } = await getClient(req).authorize(redirectURI, "code", {
+    const { url, challenge } = await getClient(req, env).authorize(redirectURI, "code", {
       provider: "password",
       pkce: true,
     });
@@ -217,7 +216,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
 
     const raw = getCookie(req.headers.cookie, CHALLENGE_COOKIE);
     const challenge = raw ? (JSON.parse(raw) as { verifier?: string }) : {};
-    const exchanged = await getClient(req).exchange(
+    const exchanged = await getClient(req, env).exchange(
       code,
       `${requestOrigin(req)}/callback`,
       challenge.verifier,
@@ -227,7 +226,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
       return;
     }
 
-    const verified = await getClient(req).verify(subjects, exchanged.tokens.access, {
+    const verified = await getClient(req, env).verify(subjects, exchanged.tokens.access, {
       refresh: exchanged.tokens.refresh,
     });
     if (verified.err) {
@@ -261,7 +260,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
       sendJson(res, 401, { user: null });
       return;
     }
-    const verified = await getClient(req).verify(
+    const verified = await getClient(req, env).verify(
       subjects,
       access,
       refresh ? { refresh } : undefined,
@@ -315,17 +314,17 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   next();
 }
 
-export function authServerPlugin(): Plugin {
+export function authServerPlugin(env: ServerEnv): Plugin {
   return {
     name: "website-auth-server",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        void handle(req, res, next);
+        void handle(env, req, res, next);
       });
     },
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
-        void handle(req, res, next);
+        void handle(env, req, res, next);
       });
     },
   };

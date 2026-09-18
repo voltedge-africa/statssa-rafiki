@@ -1,4 +1,4 @@
-// Environment loading is handled by the Nest bootstrap (`loadEnvFile` in main.ts).
+import { optional, orDefault } from "../env.ts";
 
 export const PROVIDER = {
   id: "opencode-go",
@@ -6,8 +6,10 @@ export const PROVIDER = {
   envKey: "OPENCODE_API_KEY",
 } as const;
 
-export const MODEL = process.env.PI_MODEL ?? "muse-spark-1.3-contributor";
+/** Optional, default muse-spark-1.3-contributor. */
+export const MODEL = orDefault("PI_MODEL", "muse-spark-1.3-contributor");
 
+/** The agent is unavailable until OPENCODE_API_KEY is set. */
 export function hasProviderKey(): boolean {
-  return Boolean(process.env[PROVIDER.envKey]);
+  return Boolean(optional(PROVIDER.envKey));
 }
