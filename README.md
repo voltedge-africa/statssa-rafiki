@@ -2,18 +2,18 @@
 
 A Vite+ monorepo for the STATSSA Rafiki auth stack.
 
-| App                   | What it is                                                                                                                                                                         | Stack                                      |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `apps/auth`           | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`.                                     | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
-| `apps/api`            | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification, role guards and the POPIA request desk.                                                | NestJS (Express), pgvector, Vitest, Oxc    |
-| `apps/website`        | The public front-end. Signs users in through the issuer, serves the POPIA request desk at `/popia` (footer links only), and sends Staff/Admin to the control centre after sign-in. | Vite (React SPA), Node middleware          |
-| `apps/public-portal`  | The public chat portal on port 3003. Answers statistics questions from the API's RAG corpus. Linked from the website hero.                                                         | Vite (React SPA)                           |
-| `apps/media-portal`   | The media room on port 3004. Signed-in users file fact-check requests, watch them move through human review and read the approved, referenced response.                            | Vite (React SPA), Node middleware          |
-| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer, works the POPIA case queue and reviews media fact-check drafts on the media desk.                             | Vite (React SPA), Node middleware          |
+| App                   | What it is                                                                                                                                                                          | Stack                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `apps/auth`           | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`.                                      | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
+| `apps/api`            | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification, role guards, the POPIA request desk and durable AI telemetry.                           | NestJS (Express), pgvector, Vitest, Oxc    |
+| `apps/website`        | The public front-end. Signs users in through the issuer, serves the POPIA request desk at `/popia` (footer links only), and sends Staff/Admin to the control centre after sign-in.  | Vite (React SPA), Node middleware          |
+| `apps/public-portal`  | The public chat portal on port 3003. Answers statistics questions from the API's RAG corpus. Linked from the website hero.                                                          | Vite (React SPA)                           |
+| `apps/media-portal`   | The media room on port 3004. Signed-in users file fact-check requests, watch them move through human review and read the approved, referenced response.                             | Vite (React SPA), Node middleware          |
+| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer, works the POPIA case queue, reviews media fact-check drafts and (Admins only) queries AI governance telemetry. | Vite (React SPA), Node middleware          |
 
 Users register with one of three roles — **Press**, **Staff**, **Admin**. After signing in, **Press** lands on `/press`; **Staff** and **Admin** are redirected to the control centre (port 3006).
 
-The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums. The media vocabulary (fact-check statuses, lifecycle, draft and view shapes) lives once in [`packages/media-contract`](packages/media-contract) and is shared by the API, media portal, control centre and database enums.
+The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums. The media vocabulary (fact-check statuses, lifecycle, draft and view shapes) lives once in [`packages/media-contract`](packages/media-contract) and is shared by the API, media portal, control centre and database enums. The agent vocabulary (chat events, UI blocks and AI telemetry spans) lives once in [`packages/agent-contract`](packages/agent-contract) and is shared by the API, the chat surfaces and the control centre's AI governance view.
 
 ---
 
@@ -266,29 +266,39 @@ docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_rag
 `Authorization: Bearer <access token>` header; the token is verified against the issuer's JWKS and
 its subject (`{ id, role }`) is validated against the shared contract.
 
-| Route                                        | Access        | Returns                                                |
-| -------------------------------------------- | ------------- | ------------------------------------------------------ |
-| `GET /health`                                | public        | `{ status, uptime }`                                   |
-| `GET /me`                                    | any role      | the caller's subject                                   |
-| `GET /admin/ping`                            | Admin         | role-guard example                                     |
-| `POST /popia/requests`                       | public        | submit a request; a token links it to account          |
-| `POST /popia/requests/track`                 | public        | track by reference + email                             |
-| `GET /popia/requests/mine`                   | any role      | requests linked to the caller                          |
-| `GET /popia/requests`                        | Staff, Admin  | case queue (`status`, `type`, `assigned`, `q`)         |
-| `GET /popia/requests/:reference`             | Staff, Admin  | case file with the full timeline                       |
-| `PATCH /popia/requests/:reference`           | Staff, Admin  | status, assignment or resolution                       |
-| `POST /popia/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                     |
-| `POST /media/requests`                       | any signed-in | submit a media fact-check request (starts AI drafting) |
-| `GET /media/requests/mine`                   | any signed-in | the caller's media requests                            |
-| `GET /media/requests/mine/:reference`        | owner         | request tracking plus the approved response            |
-| `POST /media/requests/:reference/withdraw`   | owner         | withdraw an open request                               |
-| `GET /media/requests`                        | Staff, Admin  | media queue (`status`, `assigned`, `q`)                |
-| `GET /media/requests/:reference`             | Staff, Admin  | media case file including the AI draft                 |
-| `PATCH /media/requests/:reference`           | Staff, Admin  | status, assignment or a lifecycle note                 |
-| `POST /media/requests/:reference/approve`    | Staff, Admin  | approve and release the reviewed response              |
-| `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                |
-| `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                             |
-| `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                     |
+| Route                                        | Access        | Returns                                                                                  |
+| -------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
+| `GET /health`                                | public        | `{ status, uptime }`                                                                     |
+| `GET /me`                                    | any role      | the caller's subject                                                                     |
+| `GET /admin/ping`                            | Admin         | role-guard example                                                                       |
+| `POST /popia/requests`                       | public        | submit a request; a token links it to account                                            |
+| `POST /popia/requests/track`                 | public        | track by reference + email                                                               |
+| `GET /popia/requests/mine`                   | any role      | requests linked to the caller                                                            |
+| `GET /popia/requests`                        | Staff, Admin  | case queue (`status`, `type`, `assigned`, `q`)                                           |
+| `GET /popia/requests/:reference`             | Staff, Admin  | case file with the full timeline                                                         |
+| `PATCH /popia/requests/:reference`           | Staff, Admin  | status, assignment or resolution                                                         |
+| `POST /popia/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                       |
+| `POST /media/requests`                       | any signed-in | submit a media fact-check request (starts AI drafting)                                   |
+| `GET /media/requests/mine`                   | any signed-in | the caller's media requests                                                              |
+| `GET /media/requests/mine/:reference`        | owner         | request tracking plus the approved response                                              |
+| `POST /media/requests/:reference/withdraw`   | owner         | withdraw an open request                                                                 |
+| `GET /media/requests`                        | Staff, Admin  | media queue (`status`, `assigned`, `q`)                                                  |
+| `GET /media/requests/:reference`             | Staff, Admin  | media case file including the AI draft                                                   |
+| `PATCH /media/requests/:reference`           | Staff, Admin  | status, assignment or a lifecycle note                                                   |
+| `POST /media/requests/:reference/approve`    | Staff, Admin  | approve and release the reviewed response                                                |
+| `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                                                  |
+| `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                                                               |
+| `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                       |
+| `GET /api/status`                            | public        | provider/model availability                                                              |
+| `POST /api/chat`                             | public        | SSE chat stream (optional auth tags the portal role)                                     |
+| `POST /api/reset`                            | public        | forget a chat session                                                                    |
+| `GET /api/telemetry`                         | Admin         | live in-memory spans (snapshot)                                                          |
+| `GET /api/telemetry/stream`                  | Admin         | live in-memory spans (SSE)                                                               |
+| `POST /api/telemetry/clear`                  | Admin         | clear the in-memory span buffer                                                          |
+| `GET /admin/ai/usage`                        | Admin         | AI model governance rollup (`from`, `to`, `model`, `feature`, `role`, `tool`, `session`) |
+| `GET /admin/ai/model-calls`                  | Admin         | paginated model calls (`limit`, `offset` + filters)                                      |
+| `GET /admin/ai/tool-calls`                   | Admin         | paginated tool calls (`limit`, `offset` + filters)                                       |
+| `GET /admin/ai/sessions/:sessionId`          | Admin         | every persisted span for one session                                                     |
 
 - The issuer URL is derived from the request host and `AUTH_PORT`, so it works locally and over a
   tailnet. Set `AUTH_ISSUER` to override; it is required in production.
@@ -297,6 +307,21 @@ its subject (`{ id, role }`) is validated against the shared contract.
 - Guards: `@Public()` opts a route out of auth, `@OptionalAuth()` treats a missing token as
   anonymous but still verifies one that is present, `@Roles("Admin")` restricts a route, and
   `@CurrentUser()` injects the verified subject.
+
+### AI telemetry and model governance
+
+Every AI call is instrumented through pi's `TelemetryContext` (`apps/api/src/agent/telemetry.service.ts`).
+Settled spans are flattened and persisted by `telemetry.persistence.ts` into the `ai_spans` table in
+the auth database, alongside the POPIA and media tables. Admins query the `ai_model_usage` and
+`ai_tool_usage` views (or the `/admin/ai/*` endpoints) to see which models and tools are being used,
+token and cost totals, latency and error rates.
+
+Recording is deliberately non-verbose and POPIA-conscious: spans hold model/provider/operation
+metadata, tool names, token counts, cost, latency and status, but never prompt, completion or
+tool-output content, and never the user's identity. Each row is tagged with the originating feature
+(`chat`, `media_draft`) and portal role (`Press`, `Staff`, `Admin`, `anonymous`) only. The live
+`/api/telemetry` buffer is Admin-only because it spans all sessions and `clear` mutates shared state;
+retention/pruning is intentionally not implemented yet (the `created_at` column is indexed for it).
 
 ---
 
@@ -316,6 +341,12 @@ The **case queue** lives in `apps/control-centre` (port 3006), the Staff/Admin w
 workers move requests through the lifecycle (submitted → acknowledged → in review ⇄ awaiting
 information → completed/rejected/withdrawn), assign cases, record a resolution and add internal or
 requester-visible notes. Every change appends to the audit trail.
+
+**AI Governance** is an Admin-only area of the control centre (`/ai` → Telemetry). It queries the
+persisted `ai_spans` telemetry in `rafiki_auth` and shows model/tool usage, token and cost totals,
+latency, error rates, per-day breakdowns and a per-session span trace, filterable by date, model,
+tool, surface and portal role. The view uses the control centre's shared `@voltedge/ui` components
+and reads through `/api/admin/ai/*`, which the Vite middleware proxies with the session token.
 
 Neither app exposes tokens to the browser: their Vite middleware runs the OpenAuth flow with
 httpOnly cookies and proxies `/api/popia/*` to `apps/api` with the session token attached. POPIA
@@ -387,8 +418,9 @@ apps/
     src/
       main.ts         # bootstrap: env, CORS, listen
       app.module.ts   # wires AuthModule + controllers
-      admin/          # role-guarded example controller
+      admin/          # role-guarded ping + AI governance (usage / model / tool / session)
       auth/           # JWKS verification, guards, decorators
+      agent/          # agent runtime, pi telemetry capture + persistence, RAG, admin queries
       popia/          # POPIA repository, service, controller
       media/          # media fact-check repository, service, AI draft service, controller
     test/             # Vitest e2e specs (supertest)
@@ -403,10 +435,11 @@ apps/
     src/App.tsx       # media room routing
     src/views/        # home, file a request, my requests, tracking
   control-centre/
-    server/auth.ts    # OAuth flow, session cookies, /api/popia and /api/media proxy
+    server/auth.ts    # OAuth flow, session cookies, /api/popia, /api/media and /api/admin/ai proxy
     src/main.tsx      # Staff/Admin workspace
-    src/views/        # POPIA case queue and media fact-check queue
+    src/views/        # POPIA case queue, media fact-check queue and AI governance telemetry
 packages/
+  agent-contract/     # chat events, UI blocks and AI telemetry spans (shared)
   auth-contract/      # roles + access-token subject schema (shared)
   popia-contract/     # POPIA types, statuses, schemas and view shapes (shared)
   popia-ui/           # POPIA API client and request components (shared)
