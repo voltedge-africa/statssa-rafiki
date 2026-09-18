@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { Agent, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
 import { createModels, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
@@ -99,6 +100,68 @@ export class AgentService implements OnModuleInit {
       model: MODEL,
       toolCount: TOOLS.length,
     };
+  }
+
+  /**
+   * Run a single, tool-free completion with a caller-supplied system prompt.
+   *
+   * Used by features (like the media room draft) that do their own retrieval and
+   * only need the model to turn supplied passages into prose. Returns the text,
+   * the model that produced it, and any provider error instead of throwing, so
+   * callers can surface an information gap rather than a 500.
+   */
+  async complete(input: { system: string; user: string }): Promise<{
+    text: string;
+    model: string;
+    error?: string;
+  }> {
+    const model = this.resolveModel();
+    const label = `${model.provider}/${model.id}`;
+
+    if (!hasProviderKey()) {
+      return { text: "", model: label, error: `The ${PROVIDER.label} API key is not configured.` };
+    }
+
+    const collection = this.models();
+    const sessionId = `completion-${randomUUID()}`;
+    const agent = new Agent({
+      sessionId,
+      initialState: {
+        systemPrompt: input.system,
+        model,
+        tools: [],
+      },
+      streamFn: (current, context, options) =>
+        collection.streamSimple(current, context, {
+          ...options,
+          telemetryContext: this.telemetry,
+          fetch: guardedFetch,
+          headers: {
+            ...options?.headers,
+            "x-opencode-session": sessionId,
+            "User-Agent": USER_AGENT,
+          },
+        }),
+    });
+
+    let text = "";
+    let failure: string | undefined;
+    const unsubscribe = agent.subscribe((event) => {
+      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+        text += event.assistantMessageEvent.delta;
+      }
+    });
+
+    try {
+      await agent.prompt(input.user);
+      failure = agent.state.errorMessage || undefined;
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+    } finally {
+      unsubscribe();
+    }
+
+    return { text: text.trim(), model: label, ...(failure ? { error: failure } : {}) };
   }
 
   private buildAgent(sessionId: string): Agent {

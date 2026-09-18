@@ -220,6 +220,9 @@ importers:
       '@voltedge/auth-contract':
         specifier: workspace:*
         version: link:../../packages/auth-contract
+      '@voltedge/media-contract':
+        specifier: workspace:*
+        version: link:../../packages/media-contract
       '@voltedge/popia-contract':
         specifier: workspace:*
         version: link:../../packages/popia-contract
@@ -275,6 +278,9 @@ importers:
       '@voltedge/auth-contract':
         specifier: workspace:*
         version: link:../../packages/auth-contract
+      '@voltedge/media-contract':
+        specifier: workspace:*
+        version: link:../../packages/media-contract
       '@voltedge/popia-contract':
         specifier: workspace:*
         version: link:../../packages/popia-contract
@@ -318,6 +324,12 @@ importers:
       '@voltedge/auth-contract':
         specifier: workspace:*
         version: link:../../packages/auth-contract
+      '@voltedge/media-contract':
+        specifier: workspace:*
+        version: link:../../packages/media-contract
+      '@voltedge/media-ui':
+        specifier: workspace:*
+        version: link:../../packages/media-ui
       '@voltedge/popia-contract':
         specifier: workspace:*
         version: link:../../packages/popia-contract
@@ -367,13 +379,52 @@ importers:
 
   apps/media-portal:
     dependencies:
+      '@openauthjs/openauth':
+        specifier: ^0.4.3
+        version: 0.4.3(arctic@2.3.4)(hono@4.13.8)
+      '@voltedge/auth-contract':
+        specifier: workspace:*
+        version: link:../../packages/auth-contract
+      '@voltedge/media-contract':
+        specifier: workspace:*
+        version: link:../../packages/media-contract
+      '@voltedge/media-ui':
+        specifier: workspace:*
+        version: link:../../packages/media-ui
       '@voltedge/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      utils:
-        specifier: workspace:*
-        version: link:../../packages/utils
+      lucide-react:
+        specifier: ^1.46.0
+        version: 1.46.0(react@19.3.0)
+      react:
+        specifier: ^19.2.8
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.3.0(react@19.3.0)
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@6.0.3)
     devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4
+        version: 4.3.3(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1))
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.6.1
+      '@types/react':
+        specifier: ^19
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^6
+        version: 6.1.1(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1))
+      tailwindcss:
+        specifier: ^4
+        version: 4.3.3
       typescript:
         specifier: ~6.0.2
         version: 6.0.3
@@ -674,6 +725,59 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.3.2(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)
+
+  packages/media-contract:
+    dependencies:
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@6.0.3)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.3
+        version: 22.20.3
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.2(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)
+
+  packages/media-ui:
+    dependencies:
+      '@voltedge/media-contract':
+        specifier: workspace:*
+        version: link:../media-contract
+      '@voltedge/ui':
+        specifier: workspace:*
+        version: link:../ui
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.6.1
+      '@types/react':
+        specifier: ^19
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.3.0(@types/react@19.3.0)
+      react:
+        specifier: ^19.2.8
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.3.0(react@19.3.0)
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.2(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)
 
   packages/popia-contract:
     dependencies:

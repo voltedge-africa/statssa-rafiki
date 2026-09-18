@@ -9,9 +9,10 @@ const ACCESS_COOKIE = "control_access";
 const REFRESH_COOKIE = "control_refresh";
 const CHALLENGE_COOKIE = "control_challenge";
 
-// Browser calls to this prefix are proxied to the API with the session's access token attached,
-// so tokens stay in httpOnly cookies and the browser never talks to the API cross-origin.
-const API_PREFIX = "/api/popia";
+// Browser calls to these prefixes are proxied to the API with the session's access token
+// attached, so tokens stay in httpOnly cookies and the browser never talks to the API
+// cross-origin. `/api/popia` carries the POPIA desk and `/api/media` the media desk.
+const API_PREFIXES = ["/api/popia", "/api/media"] as const;
 
 const ACCESS_MAX_AGE = 60 * 60 * 24 * 30;
 const REFRESH_MAX_AGE = 60 * 60 * 24 * 365;
@@ -141,11 +142,16 @@ async function readBody(req: IncomingMessage): Promise<string | undefined> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Forward an `/api/popia/*` call to the API, attaching the session token when there is one. */
-async function proxy(req: IncomingMessage, res: ServerResponse, env: ServerEnv): Promise<void> {
+/** Forward an `/api/*` call to the API, attaching the session token when there is one. */
+async function proxy(
+  req: IncomingMessage,
+  res: ServerResponse,
+  env: ServerEnv,
+  prefix: string,
+): Promise<void> {
   const url = new URL(req.url ?? "/", requestOrigin(req));
-  const suffix = url.pathname.slice(API_PREFIX.length) || "/";
-  const target = `${env.apiBase}/popia${suffix}${url.search}`;
+  const suffix = url.pathname.slice(prefix.length) || "/";
+  const target = `${env.apiBase}${prefix.slice("/api".length)}${suffix}${url.search}`;
 
   const session = await resolveSession(req, env, res);
   const headers: Record<string, string> = {};
@@ -164,15 +170,16 @@ async function proxy(req: IncomingMessage, res: ServerResponse, env: ServerEnv):
     if (upstreamType) res.setHeader("Content-Type", upstreamType);
     res.end(Buffer.from(await upstream.arrayBuffer()));
   } catch {
-    sendJson(res, 502, { message: "The POPIA API is unreachable. Try again shortly." });
+    sendJson(res, 502, { message: "The API is unreachable. Try again shortly." });
   }
 }
 
 async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse, next: () => void) {
   const path = (req.url ? new URL(req.url, requestOrigin(req)).pathname : "") || "";
 
-  if (path.startsWith(API_PREFIX)) {
-    await proxy(req, res, env);
+  const apiPrefix = API_PREFIXES.find((prefix) => path.startsWith(prefix));
+  if (apiPrefix) {
+    await proxy(req, res, env, apiPrefix);
     return;
   }
 

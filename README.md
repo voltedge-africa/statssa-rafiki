@@ -8,11 +8,12 @@ A Vite+ monorepo for the STATSSA Rafiki auth stack.
 | `apps/api`            | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification, role guards and the POPIA request desk.                                                | NestJS (Express), pgvector, Vitest, Oxc    |
 | `apps/website`        | The public front-end. Signs users in through the issuer, serves the POPIA request desk at `/popia` (footer links only), and sends Staff/Admin to the control centre after sign-in. | Vite (React SPA), Node middleware          |
 | `apps/public-portal`  | The public chat portal on port 3003. Answers statistics questions from the API's RAG corpus. Linked from the website hero.                                                         | Vite (React SPA)                           |
-| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer and works the POPIA case queue.                                                                                | Vite (React SPA), Node middleware          |
+| `apps/media-portal`   | The media room on port 3004. Signed-in users file fact-check requests, watch them move through human review and read the approved, referenced response.                            | Vite (React SPA), Node middleware          |
+| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer, works the POPIA case queue and reviews media fact-check drafts on the media desk.                             | Vite (React SPA), Node middleware          |
 
 Users register with one of three roles — **Press**, **Staff**, **Admin**. After signing in, **Press** lands on `/press`; **Staff** and **Admin** are redirected to the control centre (port 3006).
 
-The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums.
+The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums. The media vocabulary (fact-check statuses, lifecycle, draft and view shapes) lives once in [`packages/media-contract`](packages/media-contract) and is shared by the API, media portal, control centre and database enums.
 
 ---
 
@@ -63,28 +64,30 @@ The defaults work for local development. Copy the examples only if you need to o
 cp apps/auth/.env.example apps/auth/.env
 cp apps/api/.env.example apps/api/.env
 cp apps/website/.env.example apps/website/.env
+cp apps/media-portal/.env.example apps/media-portal/.env
 cp apps/control-centre/.env.example apps/control-centre/.env
 ```
 
-| Variable                  | App                                                            | Default                                               | Purpose                                                                                                    |
-| ------------------------- | -------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`            | `apps/auth`, `apps/api`                                        | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth` | Postgres connection string. The API reads the same database for POPIA requests.                            |
-| `AUTH_PORT`               | `apps/auth`, `apps/api`, `apps/website`, `apps/control-centre` | `3000`                                                | Port the issuer listens on. The API and both apps derive the issuer URL from it.                           |
-| `AUTH_ALLOWED_ORIGINS`    | `apps/auth`                                                    | –                                                     | Extra redirect-URI origins (comma-separated `scheme://host`). Same-host clients are allowed automatically. |
-| `VITE_AUTH_ISSUER`        | `apps/website`, `apps/control-centre`                          | derived from the browser hostname                     | Override the issuer URL (only needed behind an HTTPS proxy).                                               |
-| `API_PORT`                | `apps/api`                                                     | `3001`                                                | Port the API listens on.                                                                                   |
-| `AUTH_ISSUER`             | `apps/api`                                                     | derived from the request host                         | Override the issuer URL. Required in production.                                                           |
-| `API_ALLOWED_ORIGINS`     | `apps/api`                                                     | reflect any origin in dev, none in production         | Browser origins allowed by CORS (comma-separated `scheme://host`).                                         |
-| `RAG_DATABASE_URL`        | `apps/api`                                                     | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_rag`  | Postgres database holding the RAG index (needs the `pgvector` extension).                                  |
-| `VITE_API_BASE`           | `apps/public-portal`, `apps/website`, `apps/control-centre`    | `http://localhost:3001`                               | API base the portal calls (website and control centre proxy `/api/popia/*` through their servers).         |
-| `VITE_CONTROL_CENTRE_URL` | `apps/website`                                                 | derived from the browser hostname, port 3006          | Where Staff/Admin are sent after signing in.                                                               |
-| `VITE_WEBSITE_URL`        | `apps/control-centre`                                          | derived from the browser hostname, port 3002          | Public site linked from the control centre header.                                                         |
+| Variable                  | App                                                                              | Default                                               | Purpose                                                                                                                             |
+| ------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`            | `apps/auth`, `apps/api`                                                          | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth` | Postgres connection string. The API reads the same database for POPIA requests.                                                     |
+| `AUTH_PORT`               | `apps/auth`, `apps/api`, `apps/website`, `apps/control-centre`                   | `3000`                                                | Port the issuer listens on. The API and both apps derive the issuer URL from it.                                                    |
+| `AUTH_ALLOWED_ORIGINS`    | `apps/auth`                                                                      | –                                                     | Extra redirect-URI origins (comma-separated `scheme://host`). Same-host clients are allowed automatically.                          |
+| `VITE_AUTH_ISSUER`        | `apps/website`, `apps/control-centre`                                            | derived from the browser hostname                     | Override the issuer URL (only needed behind an HTTPS proxy).                                                                        |
+| `API_PORT`                | `apps/api`                                                                       | `3001`                                                | Port the API listens on.                                                                                                            |
+| `AUTH_ISSUER`             | `apps/api`                                                                       | derived from the request host                         | Override the issuer URL. Required in production.                                                                                    |
+| `API_ALLOWED_ORIGINS`     | `apps/api`                                                                       | reflect any origin in dev, none in production         | Browser origins allowed by CORS (comma-separated `scheme://host`).                                                                  |
+| `RAG_DATABASE_URL`        | `apps/api`                                                                       | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_rag`  | Postgres database holding the RAG index (needs the `pgvector` extension).                                                           |
+| `VITE_API_BASE`           | `apps/public-portal`, `apps/website`, `apps/media-portal`, `apps/control-centre` | `http://localhost:3001`                               | API base the portal calls (website, media portal and control centre proxy `/api/popia/*` and `/api/media/*` through their servers). |
+| `VITE_CONTROL_CENTRE_URL` | `apps/website`, `apps/media-portal`                                              | derived from the browser hostname, port 3006          | Where Staff/Admin are sent after signing in, and the review desk linked from the media room header.                                 |
+| `VITE_WEBSITE_URL`        | `apps/control-centre`, `apps/media-portal`                                       | derived from the browser hostname, port 3002          | Public site linked from the control centre and media room.                                                                          |
+| `VITE_PUBLIC_PORTAL_URL`  | `apps/media-portal`                                                              | derived from the browser hostname, port 3003          | Public chat portal linked from the media room footer.                                                                               |
 
 ---
 
 ## Run
 
-Five long-running processes, in five terminals, from the repo root:
+Six long-running processes, in six terminals, from the repo root:
 
 ```bash
 # terminal 1 — auth issuer on http://localhost:3000
@@ -99,7 +102,10 @@ vp run dev:api
 # terminal 4 — public chat portal on http://localhost:3003
 vp run dev:public
 
-# terminal 5 — control centre on http://localhost:3006
+# terminal 5 — media room on http://localhost:3004
+vp run dev:media
+
+# terminal 6 — control centre on http://localhost:3006
 vp run dev:control
 ```
 
@@ -109,14 +115,16 @@ Or run everything in one terminal with labelled, interleaved output:
 vp run dev:all
 ```
 
-That prebuilds the shared packages and then runs the auth issuer, API, website, public portal and
-control centre together with [`concurrently`](https://github.com/open-cli-tools/concurrently).
-**Ctrl+C stops all five**; don't kill the individual processes, as their children (Bun, Nest) can
+That prebuilds the shared packages and then runs the auth issuer, API, website, public portal,
+media room and control centre together with
+[`concurrently`](https://github.com/open-cli-tools/concurrently).
+**Ctrl+C stops all six**; don't kill the individual processes, as their children (Bun, Nest) can
 outlive them.
 
 Open <http://localhost:3002> and click **Sign in or register**. POPIA requests live at
 <http://localhost:3002/popia> and are linked from the footer. Staff and Admin sign in to the
-control centre at <http://localhost:3006> to work the case queue.
+control centre at <http://localhost:3006> to work the case queue and the media desk. The media
+room lives at <http://localhost:3004>.
 
 > Verification codes arrive in Mailpit at <http://localhost:8025> (started by `vp run db:up`). If
 > SMTP is unconfigured, they are printed to the auth server's terminal instead.
@@ -147,8 +155,9 @@ All dev servers listen on all interfaces, so from another machine on your tailne
 ```
 http://<hostname>:3002     # website (and /popia)
 http://<hostname>:3003     # public portal
+http://<hostname>:3004     # media room
 http://<hostname>:3001     # API
-http://<hostname>:3006     # control centre
+http://<hostname>:3006     # control centre (and /media)
 ```
 
 e.g. `http://armomarchy.taild8f6b9.ts.net:3002`. The website, the control centre and the API derive the issuer URL from the hostname you used (`http://<hostname>:3000`), so no config is needed. The database stays bound to `127.0.0.1` and is **not** exposed to the tailnet.
@@ -240,18 +249,29 @@ docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_rag
 `Authorization: Bearer <access token>` header; the token is verified against the issuer's JWKS and
 its subject (`{ id, role }`) is validated against the shared contract.
 
-| Route                                   | Access       | Returns                                        |
-| --------------------------------------- | ------------ | ---------------------------------------------- |
-| `GET /health`                           | public       | `{ status, uptime }`                           |
-| `GET /me`                               | any role     | the caller's subject                           |
-| `GET /admin/ping`                       | Admin        | role-guard example                             |
-| `POST /popia/requests`                  | public       | submit a request; a token links it to account  |
-| `POST /popia/requests/track`            | public       | track by reference + email                     |
-| `GET /popia/requests/mine`              | any role     | requests linked to the caller                  |
-| `GET /popia/requests`                   | Staff, Admin | case queue (`status`, `type`, `assigned`, `q`) |
-| `GET /popia/requests/:reference`        | Staff, Admin | case file with the full timeline               |
-| `PATCH /popia/requests/:reference`      | Staff, Admin | status, assignment or resolution               |
-| `POST /popia/requests/:reference/notes` | Staff, Admin | internal or requester-visible note             |
+| Route                                        | Access        | Returns                                                |
+| -------------------------------------------- | ------------- | ------------------------------------------------------ |
+| `GET /health`                                | public        | `{ status, uptime }`                                   |
+| `GET /me`                                    | any role      | the caller's subject                                   |
+| `GET /admin/ping`                            | Admin         | role-guard example                                     |
+| `POST /popia/requests`                       | public        | submit a request; a token links it to account          |
+| `POST /popia/requests/track`                 | public        | track by reference + email                             |
+| `GET /popia/requests/mine`                   | any role      | requests linked to the caller                          |
+| `GET /popia/requests`                        | Staff, Admin  | case queue (`status`, `type`, `assigned`, `q`)         |
+| `GET /popia/requests/:reference`             | Staff, Admin  | case file with the full timeline                       |
+| `PATCH /popia/requests/:reference`           | Staff, Admin  | status, assignment or resolution                       |
+| `POST /popia/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                     |
+| `POST /media/requests`                       | any signed-in | submit a media fact-check request (starts AI drafting) |
+| `GET /media/requests/mine`                   | any signed-in | the caller's media requests                            |
+| `GET /media/requests/mine/:reference`        | owner         | request tracking plus the approved response            |
+| `POST /media/requests/:reference/withdraw`   | owner         | withdraw an open request                               |
+| `GET /media/requests`                        | Staff, Admin  | media queue (`status`, `assigned`, `q`)                |
+| `GET /media/requests/:reference`             | Staff, Admin  | media case file including the AI draft                 |
+| `PATCH /media/requests/:reference`           | Staff, Admin  | status, assignment or a lifecycle note                 |
+| `POST /media/requests/:reference/approve`    | Staff, Admin  | approve and release the reviewed response              |
+| `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                |
+| `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                             |
+| `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                     |
 
 - The issuer URL is derived from the request host and `AUTH_PORT`, so it works locally and over a
   tailnet. Set `AUTH_ISSUER` to override; it is required in production.
@@ -286,6 +306,37 @@ data lives in `rafiki_auth` (`popia_requests` + `popia_request_events`); the voc
 transitions and validation schemas are defined in
 [`packages/popia-contract`](packages/popia-contract), and the shared API client and request
 components in [`packages/popia-ui`](packages/popia-ui).
+
+---
+
+## Media room
+
+The media room lives in `apps/media-portal` (port 3004). Any signed-in user — media
+stakeholders register as **Press** — can file a fact-check request at `/request`, track its
+progress at `/requests`, and read the approved response with its references. Media responses are
+**never issued automatically**.
+
+How a request is handled:
+
+- **Submit** — the API stores the request (`submitted`), returns a `MEDIA-YYYY-XXXXXX`
+  reference and starts analysis in the background (`analysing`).
+- **Grounded draft** — retrieval runs first over the RAG corpus. No relevant passage means an
+  immediate `information_gap` with a reason and **no model call**; otherwise the model sees only
+  the retrieved passages and must cite them with `[source#chunk]` ids. The draft and its
+  references are stored against the request (`awaiting_review`).
+- **Human review** — the media desk in the control centre (`/media`) shows the claim, the AI
+  draft (clearly badged as AI-generated and unreviewed) and an editable response. A Staff/Admin
+  user edits, checks the references, then approves or declines with a reason. Reviewers can also
+  regenerate the draft after the corpus changes.
+- **Release** — only the approved wording is shown to the requester, labelled as reviewed by
+  Stats SA, with the references cited in it. The AI draft itself is never released; it stays in
+  the staff case file for audit.
+
+Requester views never include the draft, assignment or internal notes. Media data lives in
+`rafiki_auth` (`media_requests` + `media_request_events`); the vocabulary, status transitions,
+draft shapes and validation schemas are defined in
+[`packages/media-contract`](packages/media-contract), and the shared API client, draft card and
+reference list in [`packages/media-ui`](packages/media-ui).
 
 ---
 
@@ -329,14 +380,20 @@ apps/
     src/lib/session.tsx
     src/popia/        # POPIA desk: submit, track, my requests
       views/
+  media-portal/
+    server/auth.ts    # OAuth flow, session cookies, /api/media proxy, 404
+    src/App.tsx       # media room routing
+    src/views/        # home, file a request, my requests, tracking
   control-centre/
-    server/auth.ts    # OAuth flow, session cookies, /api/popia proxy
+    server/auth.ts    # OAuth flow, session cookies, /api/popia and /api/media proxy
     src/main.tsx      # Staff/Admin workspace
-    src/views/        # POPIA case queue
+    src/views/        # POPIA case queue and media fact-check queue
 packages/
   auth-contract/      # roles + access-token subject schema (shared)
   popia-contract/     # POPIA types, statuses, schemas and view shapes (shared)
   popia-ui/           # POPIA API client and request components (shared)
+  media-contract/     # media fact-check statuses, schemas and view shapes (shared)
+  media-ui/           # media API client, draft card and reference list (shared)
   ui/
   utils/
 ```

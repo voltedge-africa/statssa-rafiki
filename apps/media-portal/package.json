@@ -9,10 +9,23 @@
     "preview": "vp preview"
   },
   "dependencies": {
+    "@openauthjs/openauth": "^0.4.3",
+    "@voltedge/auth-contract": "workspace:*",
+    "@voltedge/media-contract": "workspace:*",
+    "@voltedge/media-ui": "workspace:*",
     "@voltedge/ui": "workspace:*",
-    "utils": "workspace:*"
+    "lucide-react": "^1.46.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6",
+    "tailwindcss": "^4",
     "typescript": "~6.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

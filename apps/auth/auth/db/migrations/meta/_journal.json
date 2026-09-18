@@ -15,6 +15,13 @@
       "when": 1789700924902,
       "tag": "0001_futuristic_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789706086916,
+      "tag": "0002_sticky_ricochet",
+      "breakpoints": true
     }
   ]
 }

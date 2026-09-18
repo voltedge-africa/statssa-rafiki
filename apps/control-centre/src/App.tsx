@@ -15,8 +15,10 @@ import {
 
 import { AppSidebar } from "./components/app-sidebar.tsx";
 import { websiteUrl } from "./lib/env.ts";
+import { usePath } from "./lib/router.ts";
 import { signInUrl, useSession } from "./lib/session.tsx";
 import { CaseQueueView } from "./views/case-queue-view.tsx";
+import { MediaQueueView } from "./views/media-queue-view.tsx";
 
 function Gate({
   title,
@@ -41,6 +43,7 @@ function Gate({
 }
 
 export function App() {
+  const path = usePath();
   const { session, loading } = useSession();
 
   if (loading) {
@@ -79,6 +82,8 @@ export function App() {
     );
   }
 
+  const onMediaDesk = path === "/media";
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -86,15 +91,17 @@ export function App() {
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border px-4">
           <SidebarTrigger className="-ml-1" />
           <div className="flex flex-col">
-            <span className="font-heading text-sm font-medium">POPIA case queue</span>
+            <span className="font-heading text-sm font-medium">
+              {onMediaDesk ? "Media desk" : "POPIA case queue"}
+            </span>
             <span className="font-mono text-[10px] text-muted-foreground">
-              staff &amp; admin workspace
+              {onMediaDesk ? "media fact-check review" : "staff & admin workspace"}
             </span>
           </div>
         </header>
 
         <div className="flex flex-1 flex-col p-4 md:p-6">
-          <CaseQueueView />
+          {onMediaDesk ? <MediaQueueView /> : <CaseQueueView />}
         </div>
       </SidebarInset>
     </SidebarProvider>

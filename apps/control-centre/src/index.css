@@ -1,6 +1,7 @@
 @import "@voltedge/ui/globals.css";
 
 @source "../../../packages/ui/src";
+@source "../../../packages/media-ui/src";
 @source "../../../packages/popia-ui/src";
 @source "../src";
 

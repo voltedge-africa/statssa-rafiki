@@ -1,4 +1,4 @@
-import { ClipboardList, ExternalLink, LogOut } from "lucide-react";
+import { ClipboardList, ExternalLink, LogOut, Newspaper } from "lucide-react";
 
 import {
   Sidebar,
@@ -16,10 +16,12 @@ import {
 } from "@voltedge/ui";
 
 import { websiteUrl } from "../lib/env.ts";
+import { usePath } from "../lib/router.ts";
 import { useSession } from "../lib/session.tsx";
 
 export function AppSidebar() {
   const { signOut } = useSession();
+  const path = usePath();
 
   return (
     <Sidebar collapsible="icon">
@@ -47,9 +49,31 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton isActive tooltip="Case queue" render={<a href="/" />}>
+                <SidebarMenuButton
+                  isActive={path !== "/media"}
+                  tooltip="Case queue"
+                  render={<a href="/" />}
+                >
                   <ClipboardList />
                   <span>Case queue</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Media</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={path === "/media"}
+                  tooltip="Fact-check queue"
+                  render={<a href="/media" />}
+                >
+                  <Newspaper />
+                  <span>Fact-check queue</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
