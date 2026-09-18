@@ -17,21 +17,17 @@ import {
   FieldError,
   FieldLabel,
   Input,
-  Spinner,
   Textarea,
 } from "@voltedge/ui";
 import { ApiError, fieldErrors, submitMediaRequest } from "@voltedge/media-ui";
 
-import { SignInGate } from "../components/sign-in-gate.tsx";
 import { navigate } from "../lib/router.ts";
-import { useSession } from "../lib/session.tsx";
 
 interface FormState {
   fullName: string;
   outlet: string;
   claim: string;
   context: string;
-  deadline: string;
 }
 
 const EMPTY: FormState = {
@@ -39,12 +35,9 @@ const EMPTY: FormState = {
   outlet: "",
   claim: "",
   context: "",
-  deadline: "",
 };
 
 export function RequestView() {
-  const { session, loading } = useSession();
-
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -63,7 +56,6 @@ export function RequestView() {
       claim: form.claim,
       context: form.context,
       outlet: form.outlet,
-      deadline: form.deadline,
     });
     if (!parsed.success) {
       setErrors(fieldErrors(parsed.issues));
@@ -71,7 +63,6 @@ export function RequestView() {
     }
     setErrors({});
 
-    const deadline = form.deadline.trim();
     setBusy(true);
     try {
       const result = await submitMediaRequest({
@@ -79,7 +70,6 @@ export function RequestView() {
         claim: parsed.output.claim,
         ...(parsed.output.context ? { context: parsed.output.context } : {}),
         ...(parsed.output.outlet ? { outlet: parsed.output.outlet } : {}),
-        ...(deadline ? { deadline: new Date(deadline).toISOString() } : {}),
       });
       navigate(`/requests/${result.request.reference}`);
     } catch (caught) {
@@ -94,25 +84,8 @@ export function RequestView() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <Spinner className="size-6" />
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <SignInGate
-        title="Sign in to file a request"
-        description="Media fact-check requests are tied to an account so you can track the response and only see your own requests."
-      />
-    );
-  }
-
   return (
-    <section className="grid gap-10 px-6 py-14 sm:px-10 lg:grid-cols-[1.1fr_0.9fr] lg:px-14">
+    <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
@@ -183,20 +156,6 @@ export function RequestView() {
             />
             <FieldDescription>Optional, but it helps us find the right release.</FieldDescription>
             <FieldError>{errors.context}</FieldError>
-          </Field>
-
-          <Field data-invalid={errors.deadline ? true : undefined}>
-            <FieldLabel htmlFor="deadline">Your deadline</FieldLabel>
-            <Input
-              id="deadline"
-              type="datetime-local"
-              value={form.deadline}
-              onChange={(event) => update("deadline", event.target.value)}
-            />
-            <FieldDescription>
-              Optional. Review is always done by a person, so allow time before you publish.
-            </FieldDescription>
-            <FieldError>{errors.deadline}</FieldError>
           </Field>
 
           <Button type="submit" disabled={busy} className="self-start">

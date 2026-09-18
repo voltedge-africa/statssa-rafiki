@@ -13,9 +13,8 @@ import {
   CardTitle,
   Spinner,
 } from "@voltedge/ui";
-import { ApiError, StatusBadge, deadlinePhrase, listMyMediaRequests } from "@voltedge/media-ui";
+import { ApiError, StatusBadge, listMyMediaRequests } from "@voltedge/media-ui";
 
-import { SignInGate } from "../components/sign-in-gate.tsx";
 import { useSession } from "../lib/session.tsx";
 
 function isActive(request: MediaRequestSummary): boolean {
@@ -23,7 +22,7 @@ function isActive(request: MediaRequestSummary): boolean {
 }
 
 export function MyRequestsView() {
-  const { session, loading } = useSession();
+  const { session } = useSession();
   const [requests, setRequests] = useState<MediaRequestSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,28 +48,11 @@ export function MyRequestsView() {
     return () => window.clearInterval(timer);
   }, [active, load]);
 
-  if (loading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <Spinner className="size-6" />
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <SignInGate
-        title="Sign in to see your requests"
-        description="Your fact-check requests and their approved responses are linked to your account."
-      />
-    );
-  }
-
   const open = (requests ?? []).filter((request) => isOpenStatus(request.status));
   const closed = (requests ?? []).filter((request) => !isOpenStatus(request.status));
 
   return (
-    <section className="flex flex-col gap-8 px-6 py-14 sm:px-10 lg:px-14">
+    <section className="flex flex-col gap-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
@@ -153,10 +135,11 @@ function RequestList({ requests }: { requests: MediaRequestSummary[] }) {
               <StatusBadge status={request.status} />
             </span>
             <span className="line-clamp-2 max-w-[80ch] text-sm font-medium">{request.claim}</span>
-            <span className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground">
-              <span>{deadlinePhrase(request.deadline, request.status)}</span>
-              {request.hasResponse ? <span>response available</span> : null}
-            </span>
+            {request.hasResponse ? (
+              <span className="font-mono text-[11px] text-muted-foreground">
+                response available
+              </span>
+            ) : null}
           </a>
         </li>
       ))}

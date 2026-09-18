@@ -3,9 +3,14 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { isOpenStatus, type MediaRequestTracking } from "@voltedge/media-contract";
 import { Alert, AlertDescription, AlertTitle, Button, Spinner } from "@voltedge/ui";
-import { ApiError, RequestFile, getMyMediaRequest, withdrawMediaRequest } from "@voltedge/media-ui";
+import {
+  ApiError,
+  DocumentPreview,
+  RequestFile,
+  getMyMediaRequest,
+  withdrawMediaRequest,
+} from "@voltedge/media-ui";
 
-import { SignInGate } from "../components/sign-in-gate.tsx";
 import { useSession } from "../lib/session.tsx";
 
 function isActive(request: MediaRequestTracking): boolean {
@@ -13,11 +18,12 @@ function isActive(request: MediaRequestTracking): boolean {
 }
 
 export function RequestDetailView({ reference }: { reference: string }) {
-  const { session, loading } = useSession();
+  const { session } = useSession();
   const [request, setRequest] = useState<MediaRequestTracking | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [previewSource, setPreviewSource] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -63,25 +69,8 @@ export function RequestDetailView({ reference }: { reference: string }) {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <Spinner className="size-6" />
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <SignInGate
-        title="Sign in to open this request"
-        description="Your request history stays private to your account. Approved responses are also listed in the media room feed."
-      />
-    );
-  }
-
   return (
-    <section className="flex flex-col gap-6 px-6 py-14 sm:px-10 lg:px-14">
+    <section className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <Button variant="ghost" size="sm" nativeButton={false} render={<a href="/requests" />}>
           <ArrowLeft />
@@ -150,7 +139,7 @@ export function RequestDetailView({ reference }: { reference: string }) {
             </Alert>
           ) : null}
 
-          <RequestFile request={request} events={request.events} />
+          <RequestFile request={request} events={request.events} onOpenSource={setPreviewSource} />
 
           {isOpenStatus(request.status) ? (
             <div className="flex justify-end">
@@ -161,6 +150,14 @@ export function RequestDetailView({ reference }: { reference: string }) {
           ) : null}
         </>
       ) : null}
+
+      <DocumentPreview
+        source={previewSource}
+        open={previewSource !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewSource(null);
+        }}
+      />
     </section>
   );
 }
