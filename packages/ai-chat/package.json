@@ -24,12 +24,14 @@
     "@voltedge/ui": "workspace:*",
     "ai": "^7.0.105",
     "cn": "^0.3.0",
+    "idb-keyval": "^6.3.0",
     "lucide-react": "^1.46.0",
     "motion": "^13.4.0",
     "recharts": "3.8.0",
     "shiki": "^4.4.3",
     "streamdown": "^2.6.0",
-    "use-stick-to-bottom": "^1.1.6"
+    "use-stick-to-bottom": "^1.1.6",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@storybook/react": "^10.6.0",

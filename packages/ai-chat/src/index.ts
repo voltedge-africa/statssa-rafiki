@@ -1,5 +1,7 @@
 export { ChatSurface, type ChatSurfaceProps } from "./components/chat-surface.tsx";
 export { ChatComposer } from "./components/chat-composer.tsx";
+export { ChatHistorySidebar } from "./components/chat-history-sidebar.tsx";
+export { StorageIndicator, type StorageIndicatorProps } from "./components/storage-indicator.tsx";
 export { TelemetryPanel, type TelemetryPanelProps } from "./components/telemetry-panel.tsx";
 export { DocumentPreview } from "./components/document-preview.tsx";
 export { ToolRunView } from "./components/tool-run.tsx";
@@ -45,8 +47,28 @@ export {
 export { useChat, type UseChatOptions } from "./hooks/use-chat.ts";
 export { useTelemetry, type UseTelemetryOptions } from "./hooks/use-telemetry.ts";
 
+export {
+  useChatStore,
+  type ChatActions,
+  type ChatState,
+  type ChatStore,
+} from "./lib/chat-store.ts";
+export {
+  CHAT_STORAGE_LIMIT_BYTES,
+  type ChatStorageStats,
+  type StoredChat,
+} from "./lib/chat-persistence.ts";
 export { linkifyCitations, parseCitationHref, type Citation } from "./lib/citations.ts";
-export { formatCost, formatDuration, formatMs, formatValue, numeric } from "./lib/format.ts";
+export {
+  formatBytes,
+  formatCost,
+  formatDuration,
+  formatMs,
+  formatPercent,
+  formatRelativeTime,
+  formatValue,
+  numeric,
+} from "./lib/format.ts";
 
 export type {
   AgentStatus,

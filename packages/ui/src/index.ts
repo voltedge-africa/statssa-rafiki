@@ -178,6 +178,33 @@ export {
   SheetTitle,
   SheetTrigger,
 } from "./components/ui/sheet.tsx";
+export {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInput,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+} from "./components/ui/sidebar.tsx";
+export { Skeleton } from "./components/ui/skeleton.tsx";
 export { Spinner } from "./components/ui/spinner.tsx";
 export {
   Table,
@@ -206,4 +233,5 @@ export {
   TooltipTrigger,
 } from "./components/ui/tooltip.tsx";
 export { ThemeProvider, useTheme } from "./components/theme-provider.tsx";
+export { useIsMobile } from "./hooks/use-mobile.ts";
 export { cn } from "./lib/utils.ts";
