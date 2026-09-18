@@ -16,6 +16,30 @@ export {
 export { Badge, badgeVariants } from "./components/ui/badge.tsx";
 export { Button, buttonVariants } from "./components/ui/button.tsx";
 export {
+  ButtonGroup,
+  ButtonGroupSeparator,
+  ButtonGroupText,
+  buttonGroupVariants,
+} from "./components/ui/button-group.tsx";
+export {
+  type CarouselApi,
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+  useCarousel,
+} from "./components/ui/carousel.tsx";
+export {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartStyle,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "./components/ui/chart.tsx";
+export {
   Card,
   CardAction,
   CardContent,
@@ -29,6 +53,29 @@ export {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "./components/ui/collapsible.tsx";
+export {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandShortcut,
+} from "./components/ui/command.tsx";
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+} from "./components/ui/dialog.tsx";
 export {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -67,6 +114,7 @@ export {
   FieldTitle,
 } from "./components/ui/field.tsx";
 export { Input } from "./components/ui/input.tsx";
+export { HoverCard, HoverCardContent, HoverCardTrigger } from "./components/ui/hover-card.tsx";
 export {
   InputGroup,
   InputGroupAddon,
@@ -131,6 +179,16 @@ export {
   SheetTrigger,
 } from "./components/ui/sheet.tsx";
 export { Spinner } from "./components/ui/spinner.tsx";
+export {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./components/ui/table.tsx";
 export {
   Tabs,
   TabsContent,

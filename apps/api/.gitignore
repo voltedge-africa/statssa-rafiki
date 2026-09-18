@@ -4,3 +4,7 @@ dist
 *.tsbuildinfo
 .env
 .DS_Store
+
+# Local RAG index and embedding model cache (regenerate with `rag:ingest` / `rag:model`)
+data
+models
