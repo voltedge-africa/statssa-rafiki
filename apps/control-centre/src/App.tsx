@@ -17,6 +17,7 @@ import { AppSidebar } from "./components/app-sidebar.tsx";
 import { websiteUrl } from "./lib/env.ts";
 import { usePath } from "./lib/router.ts";
 import { signInUrl, useSession } from "./lib/session.tsx";
+import { AiTelemetryView } from "./views/ai-telemetry-view.tsx";
 import { CaseQueueView } from "./views/case-queue-view.tsx";
 import { MediaQueueView } from "./views/media-queue-view.tsx";
 
@@ -83,6 +84,14 @@ export function App() {
   }
 
   const onMediaDesk = path === "/media";
+  const onAiGovernance = path === "/ai";
+
+  const title = onMediaDesk ? "Media desk" : onAiGovernance ? "AI Governance" : "POPIA case queue";
+  const subtitle = onMediaDesk
+    ? "media fact-check review"
+    : onAiGovernance
+      ? "model & tool telemetry"
+      : "staff & admin workspace";
 
   return (
     <SidebarProvider>
@@ -91,17 +100,19 @@ export function App() {
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border px-4">
           <SidebarTrigger className="-ml-1" />
           <div className="flex flex-col">
-            <span className="font-heading text-sm font-medium">
-              {onMediaDesk ? "Media desk" : "POPIA case queue"}
-            </span>
-            <span className="font-mono text-[10px] text-muted-foreground">
-              {onMediaDesk ? "media fact-check review" : "staff & admin workspace"}
-            </span>
+            <span className="font-heading text-sm font-medium">{title}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">{subtitle}</span>
           </div>
         </header>
 
         <div className="flex flex-1 flex-col p-4 md:p-6">
-          {onMediaDesk ? <MediaQueueView /> : <CaseQueueView />}
+          {onMediaDesk ? (
+            <MediaQueueView />
+          ) : onAiGovernance ? (
+            <AiTelemetryView />
+          ) : (
+            <CaseQueueView />
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>

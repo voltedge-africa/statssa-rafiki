@@ -11,8 +11,9 @@ const CHALLENGE_COOKIE = "control_challenge";
 
 // Browser calls to these prefixes are proxied to the API with the session's access token
 // attached, so tokens stay in httpOnly cookies and the browser never talks to the API
-// cross-origin. `/api/popia` carries the POPIA desk and `/api/media` the media desk.
-const API_PREFIXES = ["/api/popia", "/api/media"] as const;
+// cross-origin. `/api/popia` carries the POPIA desk, `/api/media` the media desk and
+// `/api/admin/ai` the Admin-only AI governance telemetry.
+const API_PREFIXES = ["/api/popia", "/api/media", "/api/admin/ai"] as const;
 
 const ACCESS_MAX_AGE = 60 * 60 * 24 * 30;
 const REFRESH_MAX_AGE = 60 * 60 * 24 * 365;
