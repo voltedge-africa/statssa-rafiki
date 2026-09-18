@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import type {
   SpanAttributes,
@@ -12,7 +13,9 @@ export type { RecordedSpan, TelemetryStoreEvent };
 
 interface InternalSpan {
   id: number;
+  uid: string;
   parentId: number | null;
+  parentUid: string | null;
   name: string;
   attributes: SpanAttributes;
   events: { name: string; attributes: SpanAttributes; timestamp: number }[];
@@ -31,14 +34,18 @@ function mergeAttributes(current: SpanAttributes, update: SpanAttributes): SpanA
 @Injectable()
 export class TelemetryService implements TelemetryContext {
   #spans: InternalSpan[] = [];
+  #byId = new Map<number, InternalSpan>();
   #nextId = 1;
   #listeners = new Set<(event: TelemetryStoreEvent) => void>();
 
   /** Start an event-driven span that is ended explicitly by the caller. */
   begin(name: string, attributes: SpanAttributes = {}, parentId: number | null = null): SpanHandle {
+    const parentUid = parentId === null ? null : (this.#byId.get(parentId)?.uid ?? null);
     const span: InternalSpan = {
       id: this.#nextId++,
+      uid: randomUUID(),
       parentId,
+      parentUid,
       name,
       attributes: { ...attributes },
       events: [],
@@ -47,7 +54,11 @@ export class TelemetryService implements TelemetryContext {
       settled: false,
     };
     this.#spans.push(span);
-    if (this.#spans.length > MAX_SPANS) this.#spans.splice(0, this.#spans.length - MAX_SPANS);
+    this.#byId.set(span.id, span);
+    while (this.#spans.length > MAX_SPANS) {
+      const evicted = this.#spans.shift();
+      if (evicted) this.#byId.delete(evicted.id);
+    }
     this.#emit(span);
     return new SpanHandle(this, span);
   }
@@ -88,6 +99,7 @@ export class TelemetryService implements TelemetryContext {
 
   clear(): void {
     this.#spans = [];
+    this.#byId.clear();
     for (const listener of this.#listeners) listener({ type: "clear" });
   }
 
@@ -115,7 +127,9 @@ export class TelemetryService implements TelemetryContext {
   #toRecorded(span: InternalSpan): RecordedSpan {
     return {
       id: span.id,
+      uid: span.uid,
       parentId: span.parentId,
+      parentUid: span.parentUid,
       name: span.name,
       attributes: { ...span.attributes },
       events: span.events.map((event) => ({
