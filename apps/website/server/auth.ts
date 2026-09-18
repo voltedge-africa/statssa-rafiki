@@ -1,29 +1,33 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient } from "@openauthjs/openauth/client";
 import type { Plugin } from "vite";
-import { subjects, type AuthUser } from "@voltedge/auth-contract";
+import {
+  appUrlFromOrigin,
+  SESSION_ACCESS_COOKIE,
+  SESSION_REFRESH_COOKIE,
+  workspaceForRole,
+  type Role,
+  subjects,
+  type AuthUser,
+} from "@voltedge/auth-contract";
 import type { ServerEnv } from "./env.ts";
 
 const CLIENT_ID = "website";
-const ACCESS_COOKIE = "website_access";
-const REFRESH_COOKIE = "website_refresh";
+const ACCESS_COOKIE = SESSION_ACCESS_COOKIE;
+const REFRESH_COOKIE = SESSION_REFRESH_COOKIE;
 const CHALLENGE_COOKIE = "website_challenge";
 
 // Browser calls to this prefix are proxied to the API with the session's access token attached,
 // so tokens stay in httpOnly cookies and the browser never talks to the API cross-origin.
 const API_PREFIX = "/api/popia";
 
-// Pages the client app handles. Anything else that is navigated to (Accept: text/html) gets a
-// real 404 instead of silently falling through to the signed-in role's workspace.
-const SPA_ROUTES = new Set([
-  "/",
-  "/popia",
-  "/popia/track",
-  "/popia/my",
-  "/press",
-  "/staff",
-  "/admin",
-]);
+// The client app handles these pages. `/press`, `/staff` and `/admin` are not pages any more:
+// the server redirects them to the app the signed-in user belongs in. Anything else that is
+// navigated to (Accept: text/html) gets a real 404 instead of silently falling through.
+const SPA_ROUTES = new Set(["/", "/popia", "/popia/track", "/popia/my"]);
+
+// Legacy role paths kept as signposts so old bookmarks still land somewhere sensible.
+const ROLE_ROUTES = new Set(["/press", "/staff", "/admin"]);
 
 function normalizePath(path: string) {
   const trimmed = path.replace(/\/+$/, "");
@@ -145,11 +149,13 @@ function issuerFor(req: IncomingMessage, env: ServerEnv) {
   return `${requestProto(req)}://${requestHostname(req)}:${env.authPort}`;
 }
 
-// Staff and Admin land in the control centre (its own app on port 3006); Press stay on this
-// site. Derived from the request host unless VITE_CONTROL_CENTRE_URL is set.
-function controlCentre(req: IncomingMessage, env: ServerEnv) {
-  if (env.controlCentreUrl) return env.controlCentreUrl;
-  return `${requestProto(req)}://${requestHostname(req)}:3006`;
+// Where a signed-in user belongs: Press read the media room, Staff and Admin run the control
+// centre. Explicit VITE_*_URL wins; otherwise it is derived from the request host (eg. the
+// same hostname on port 3004 or 3006).
+function workspaceDestination(role: Role, req: IncomingMessage, env: ServerEnv) {
+  const workspace = workspaceForRole(role);
+  const configured = workspace === "mediaPortal" ? env.mediaPortalUrl : env.controlCentreUrl;
+  return configured ?? appUrlFromOrigin(requestOrigin(req), workspace);
 }
 
 const clients = new Map<string, ReturnType<typeof createClient>>();
@@ -342,7 +348,7 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
 
     const tokens = verified.tokens ?? exchanged.tokens;
     const role = verified.subject.properties.role;
-    const destination = role === "Press" ? "/press" : controlCentre(req, env);
+    const destination = workspaceDestination(role, req, env);
     redirect(res, destination, [...sessionCookies(tokens), clearCookie(CHALLENGE_COOKIE)]);
     return;
   }
@@ -366,8 +372,24 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
   if (wantsHtml(req) && !isAssetRequest(path)) {
     const normalized = normalizePath(path);
     const canonical = normalized.toLowerCase();
-    // Browsers' address bars autocomplete to a stored casing (eg. /Press). Redirect to the
-    // canonical lowercase route so the URL bar settles on /press etc.
+
+    if (ROLE_ROUTES.has(canonical)) {
+      // `/press`, `/staff` and `/admin` are signposts to the app the user belongs in.
+      if (normalized !== canonical) {
+        redirect(res, canonical);
+        return;
+      }
+      const session = await resolveSession(req, env, res);
+      if (!session) {
+        redirect(res, "/auth/login");
+        return;
+      }
+      redirect(res, workspaceDestination(session.user.role, req, env));
+      return;
+    }
+
+    // Browsers' address bars autocomplete to a stored casing (eg. /Popia). Redirect to the
+    // canonical lowercase route so the URL bar settles on /popia etc.
     if (SPA_ROUTES.has(canonical) && normalized !== canonical) {
       const query = req.url ? new URL(req.url, requestOrigin(req)).search : "";
       redirect(res, `${canonical}${query}`);

@@ -31,8 +31,3 @@ export function controlCentreUrl(): string {
   const { protocol, hostname } = window.location;
   return `${protocol}//${hostname}:3006`;
 }
-
-/** The reviewer desk for Staff and Admin accounts. */
-export function reviewDeskUrl(): string {
-  return `${controlCentreUrl().replace(/\/+$/, "")}/media`;
-}

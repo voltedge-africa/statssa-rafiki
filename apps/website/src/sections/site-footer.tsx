@@ -1,6 +1,6 @@
 import { Button } from "@voltedge/ui";
 
-import { workspaceHome } from "../lib/control-centre.ts";
+import { workspaceHome } from "../lib/workspaces.ts";
 import { signInUrl, useSession } from "../lib/session.tsx";
 
 const explore = [

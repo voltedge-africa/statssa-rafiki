@@ -1,12 +1,20 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient, type Tokens } from "@openauthjs/openauth/client";
-import { subjects, type AuthUser } from "@voltedge/auth-contract";
+import {
+  appUrlFromOrigin,
+  SESSION_ACCESS_COOKIE,
+  SESSION_REFRESH_COOKIE,
+  workspaceForRole,
+  type Role,
+  subjects,
+  type AuthUser,
+} from "@voltedge/auth-contract";
 import type { Plugin } from "vite";
 import type { ServerEnv } from "./env.ts";
 
 const CLIENT_ID = "control-centre";
-const ACCESS_COOKIE = "control_access";
-const REFRESH_COOKIE = "control_refresh";
+const ACCESS_COOKIE = SESSION_ACCESS_COOKIE;
+const REFRESH_COOKIE = SESSION_REFRESH_COOKIE;
 const CHALLENGE_COOKIE = "control_challenge";
 
 // Browser calls to these prefixes are proxied to the API with the session's access token
@@ -39,11 +47,35 @@ function requestOrigin(req: IncomingMessage) {
   return `${requestProto(req)}://${req.headers.host ?? "localhost"}`;
 }
 
+function wantsHtml(req: IncomingMessage) {
+  return (req.headers.accept ?? "").includes("text/html");
+}
+
+// Vite internals (/@vite, /@fs, ...) and anything with a file extension are assets, never pages.
+function isAssetRequest(path: string) {
+  if (path.startsWith("/@")) return true;
+  const last = path.replace(/\/+$/, "").split("/").pop() ?? "";
+  return last.includes(".");
+}
+
 // The auth server runs alongside this app on AUTH_PORT, so reach it through the same hostname
 // the browser used. Set VITE_AUTH_ISSUER to override (eg. an HTTPS proxy).
 function issuerFor(req: IncomingMessage, env: ServerEnv) {
   if (env.authIssuer) return env.authIssuer;
   return `${requestProto(req)}://${requestHostname(req)}:${env.authPort}`;
+}
+
+// Where a signed-out visitor is sent: the public website, which owns sign-in.
+function websiteDestination(req: IncomingMessage, env: ServerEnv) {
+  return env.websiteUrl ?? appUrlFromOrigin(requestOrigin(req), "website");
+}
+
+// Where a signed-in user belongs when this app is not theirs: Press read the media room; Staff
+// and Admin belong here. Explicit VITE_*_URL wins, otherwise derive from the request host.
+function workspaceDestination(role: Role, req: IncomingMessage, env: ServerEnv) {
+  const workspace = workspaceForRole(role);
+  const configured = workspace === "mediaPortal" ? env.mediaPortalUrl : undefined;
+  return configured ?? appUrlFromOrigin(requestOrigin(req), workspace);
 }
 
 const clients = new Map<string, ReturnType<typeof createClient>>();
@@ -217,7 +249,9 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
     const code = params.get("code");
     const failed = params.get("error");
     if (failed || !code) {
-      redirect(res, "/?error=sign_in_failed", [clearCookie(CHALLENGE_COOKIE)]);
+      redirect(res, `${websiteDestination(req, env)}?error=sign_in_failed`, [
+        clearCookie(CHALLENGE_COOKIE),
+      ]);
       return;
     }
 
@@ -229,7 +263,9 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
       challenge.verifier,
     );
     if (exchanged.err) {
-      redirect(res, "/?error=sign_in_failed", [clearCookie(CHALLENGE_COOKIE)]);
+      redirect(res, `${websiteDestination(req, env)}?error=sign_in_failed`, [
+        clearCookie(CHALLENGE_COOKIE),
+      ]);
       return;
     }
 
@@ -237,11 +273,15 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
       refresh: exchanged.tokens.refresh,
     });
     if (verified.err) {
-      redirect(res, "/?error=sign_in_failed", [clearCookie(CHALLENGE_COOKIE)]);
+      redirect(res, `${websiteDestination(req, env)}?error=sign_in_failed`, [
+        clearCookie(CHALLENGE_COOKIE),
+      ]);
       return;
     }
 
-    redirect(res, "/", [
+    const role = verified.subject.properties.role;
+    const destination = role === "Press" ? workspaceDestination(role, req, env) : "/";
+    redirect(res, destination, [
       ...sessionCookies(verified.tokens ?? exchanged.tokens),
       clearCookie(CHALLENGE_COOKIE),
     ]);
@@ -262,6 +302,20 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
     res.setHeader("Set-Cookie", [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)]);
     sendJson(res, 200, { user: null });
     return;
+  }
+
+  // The control centre is for Staff and Admin. Signed-out visitors go to the website (which
+  // owns sign-in); Press are sent to the media room, their own workspace.
+  if (wantsHtml(req) && !isAssetRequest(path)) {
+    const session = await resolveSession(req, env, res);
+    if (!session) {
+      redirect(res, websiteDestination(req, env));
+      return;
+    }
+    if (session.user.role === "Press") {
+      redirect(res, workspaceDestination(session.user.role, req, env));
+      return;
+    }
   }
 
   next();

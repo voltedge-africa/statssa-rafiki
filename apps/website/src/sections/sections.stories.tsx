@@ -7,7 +7,6 @@ import { Hero } from "./hero.tsx";
 import { HowItWorks } from "./how-it-works.tsx";
 import { SiteFooter } from "./site-footer.tsx";
 import { SiteHeader } from "./site-header.tsx";
-import { Workspace } from "./workspace.tsx";
 
 const meta = {
   title: "Website/Sections",
@@ -45,8 +44,4 @@ export const FaqSection: Story = {
 
 export const Footer: Story = {
   render: () => <SiteFooter />,
-};
-
-export const PressWorkspace: Story = {
-  render: () => <Workspace required="Press" />,
 };

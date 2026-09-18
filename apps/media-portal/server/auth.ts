@@ -1,18 +1,31 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient, type Tokens } from "@openauthjs/openauth/client";
 import { MEDIA_REFERENCE_PATTERN } from "@voltedge/media-contract";
-import { subjects, type AuthUser } from "@voltedge/auth-contract";
+import {
+  appUrlFromOrigin,
+  SESSION_ACCESS_COOKIE,
+  SESSION_REFRESH_COOKIE,
+  workspaceForRole,
+  type Role,
+  subjects,
+  type AuthUser,
+} from "@voltedge/auth-contract";
 import type { Plugin } from "vite";
 import type { ServerEnv } from "./env.ts";
 
 const CLIENT_ID = "media-portal";
-const ACCESS_COOKIE = "media_access";
-const REFRESH_COOKIE = "media_refresh";
+const ACCESS_COOKIE = SESSION_ACCESS_COOKIE;
+const REFRESH_COOKIE = SESSION_REFRESH_COOKIE;
 const CHALLENGE_COOKIE = "media_challenge";
 
-// Browser calls to this prefix are proxied to the API with the session's access token attached,
-// so tokens stay in httpOnly cookies and the browser never talks to the API cross-origin.
-const API_PREFIX = "/api/media";
+// Browser calls to these prefixes are proxied to the API with the session's access token
+// attached, so tokens stay in httpOnly cookies and the browser never talks to the API
+// cross-origin. `/api/media` carries the media desk and `/api/rag` the indexed documents a
+// citation chip opens.
+const API_PREFIXES: Record<string, string> = {
+  "/api/media": "/media",
+  "/api/rag": "/api/rag",
+};
 
 const ACCESS_MAX_AGE = 60 * 60 * 24 * 30;
 const REFRESH_MAX_AGE = 60 * 60 * 24 * 365;
@@ -145,6 +158,19 @@ function issuerFor(req: IncomingMessage, env: ServerEnv) {
   return `${requestProto(req)}://${requestHostname(req)}:${env.authPort}`;
 }
 
+// Where a signed-out visitor is sent: the public website, which owns sign-in.
+function websiteDestination(req: IncomingMessage, env: ServerEnv) {
+  return env.websiteUrl ?? appUrlFromOrigin(requestOrigin(req), "website");
+}
+
+// Where a signed-in user belongs when this app is not theirs: Staff and Admin run the control
+// centre; Press belong here. Explicit VITE_*_URL wins, otherwise derive from the request host.
+function workspaceDestination(role: Role, req: IncomingMessage, env: ServerEnv) {
+  const workspace = workspaceForRole(role);
+  const configured = workspace === "controlCentre" ? env.controlCentreUrl : undefined;
+  return configured ?? appUrlFromOrigin(requestOrigin(req), workspace);
+}
+
 const clients = new Map<string, ReturnType<typeof createClient>>();
 
 function getClient(req: IncomingMessage, env: ServerEnv) {
@@ -246,11 +272,17 @@ async function readBody(req: IncomingMessage): Promise<string | undefined> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Forward an `/api/media/*` call to the API, attaching the session token when there is one. */
-async function proxy(req: IncomingMessage, res: ServerResponse, env: ServerEnv): Promise<void> {
+/** Forward a proxied call to the API, attaching the session token when there is one. */
+async function proxy(
+  req: IncomingMessage,
+  res: ServerResponse,
+  env: ServerEnv,
+  prefix: string,
+  upstreamPath: string,
+): Promise<void> {
   const url = new URL(req.url ?? "/", requestOrigin(req));
-  const suffix = url.pathname.slice(API_PREFIX.length) || "/";
-  const target = `${env.apiBase}/media${suffix}${url.search}`;
+  const suffix = url.pathname.slice(prefix.length) || "/";
+  const target = `${env.apiBase}${upstreamPath}${suffix}${url.search}`;
 
   const session = await resolveSession(req, env, res);
   const headers: Record<string, string> = {};
@@ -281,8 +313,9 @@ async function proxy(req: IncomingMessage, res: ServerResponse, env: ServerEnv):
 async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse, next: () => void) {
   const path = (req.url ? new URL(req.url, requestOrigin(req)).pathname : "") || "";
 
-  if (path.startsWith(API_PREFIX)) {
-    await proxy(req, res, env);
+  const apiPrefix = Object.keys(API_PREFIXES).find((prefix) => path.startsWith(prefix));
+  if (apiPrefix) {
+    await proxy(req, res, env, apiPrefix, API_PREFIXES[apiPrefix]);
     return;
   }
 
@@ -309,7 +342,9 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
     const code = params.get("code");
     const failed = params.get("error");
     if (failed || !code) {
-      redirect(res, "/?error=sign_in_failed", [clearCookie(CHALLENGE_COOKIE)]);
+      redirect(res, `${websiteDestination(req, env)}?error=sign_in_failed`, [
+        clearCookie(CHALLENGE_COOKIE),
+      ]);
       return;
     }
 
@@ -321,7 +356,9 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
       challenge.verifier,
     );
     if (exchanged.err) {
-      redirect(res, "/?error=sign_in_failed", [clearCookie(CHALLENGE_COOKIE)]);
+      redirect(res, `${websiteDestination(req, env)}?error=sign_in_failed`, [
+        clearCookie(CHALLENGE_COOKIE),
+      ]);
       return;
     }
 
@@ -329,11 +366,15 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
       refresh: exchanged.tokens.refresh,
     });
     if (verified.err) {
-      redirect(res, "/?error=sign_in_failed", [clearCookie(CHALLENGE_COOKIE)]);
+      redirect(res, `${websiteDestination(req, env)}?error=sign_in_failed`, [
+        clearCookie(CHALLENGE_COOKIE),
+      ]);
       return;
     }
 
-    redirect(res, "/", [
+    const role = verified.subject.properties.role;
+    const destination = role === "Press" ? "/" : workspaceDestination(role, req, env);
+    redirect(res, destination, [
       ...sessionCookies(verified.tokens ?? exchanged.tokens),
       clearCookie(CHALLENGE_COOKIE),
     ]);
@@ -354,6 +395,20 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
     res.setHeader("Set-Cookie", [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)]);
     sendJson(res, 200, { user: null });
     return;
+  }
+
+  // The media room is for Press. Signed-out visitors go to the website (which owns sign-in);
+  // Staff and Admin are sent to the control centre, their own workspace.
+  if (wantsHtml(req) && !isAssetRequest(path) && isSpaRoute(path)) {
+    const session = await resolveSession(req, env, res);
+    if (!session) {
+      redirect(res, websiteDestination(req, env));
+      return;
+    }
+    if (session.user.role !== "Press") {
+      redirect(res, workspaceDestination(session.user.role, req, env));
+      return;
+    }
   }
 
   if (wantsHtml(req) && !isAssetRequest(path) && !isSpaRoute(path)) {

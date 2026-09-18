@@ -10,6 +10,8 @@ import {
 
 import type { Role } from "@voltedge/auth-contract";
 
+import { websiteUrl } from "../env.ts";
+
 export type { Role };
 
 export type Session = {
@@ -43,8 +45,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await fetch("/auth/logout", { method: "POST" });
-    await refresh();
-  }, [refresh]);
+    window.location.assign(websiteUrl());
+  }, []);
 
   useEffect(() => {
     void refresh();

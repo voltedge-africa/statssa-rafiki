@@ -6,14 +6,6 @@ import { Hero } from "./sections/hero.tsx";
 import { HowItWorks } from "./sections/how-it-works.tsx";
 import { SiteFooter } from "./sections/site-footer.tsx";
 import { SiteHeader } from "./sections/site-header.tsx";
-import { Workspace } from "./sections/workspace.tsx";
-import type { Role } from "./lib/session.tsx";
-
-const WORKSPACE_ROLES: Record<string, Role> = {
-  "/press": "Press",
-  "/staff": "Staff",
-  "/admin": "Admin",
-};
 
 function currentPath() {
   const path = window.location.pathname.replace(/\/+$/, "");
@@ -22,11 +14,6 @@ function currentPath() {
 
 export function App() {
   const path = currentPath();
-  const required = WORKSPACE_ROLES[path];
-
-  if (required) {
-    return <Workspace required={required} />;
-  }
 
   return (
     <div className="min-h-svh bg-background">

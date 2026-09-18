@@ -9,6 +9,10 @@ export interface ServerEnv {
   authIssuer?: string;
   /** Base URL of the Rafiki API. Default http://localhost:3001. */
   apiBase: string;
+  /** Explicit website URL. When unset, it is derived from the request host on port 3002. */
+  websiteUrl?: string;
+  /** Explicit control centre URL. When unset, it is derived from the request host on port 3006. */
+  controlCentreUrl?: string;
 }
 
 /**
@@ -22,5 +26,7 @@ export function readServerEnv(source: EnvSource): ServerEnv {
     authPort: optional("AUTH_PORT") ?? "3000",
     authIssuer: optional("VITE_AUTH_ISSUER"),
     apiBase: (optional("VITE_API_BASE") ?? "http://localhost:3001").replace(/\/+$/, ""),
+    websiteUrl: optional("VITE_WEBSITE_URL")?.replace(/\/+$/, ""),
+    controlCentreUrl: optional("VITE_CONTROL_CENTRE_URL")?.replace(/\/+$/, ""),
   };
 }
