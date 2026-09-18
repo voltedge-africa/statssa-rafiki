@@ -50,7 +50,7 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={path !== "/media"}
+                  isActive={path === "/" || path.startsWith("/cases/")}
                   tooltip="Case queue"
                   render={<a href="/" />}
                 >
@@ -68,7 +68,7 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={path === "/media"}
+                  isActive={path === "/media" || path.startsWith("/media/")}
                   tooltip="Fact-check queue"
                   render={<a href="/media" />}
                 >

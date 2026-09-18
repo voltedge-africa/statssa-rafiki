@@ -1,43 +1,20 @@
-import type { ReactNode } from "react";
+import { useEffect } from "react";
 
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-  Spinner,
-} from "@voltedge/ui";
+import { SidebarInset, SidebarProvider, SidebarTrigger, Spinner } from "@voltedge/ui";
 
 import { AppSidebar } from "./components/app-sidebar.tsx";
-import { websiteUrl } from "./lib/env.ts";
-import { usePath } from "./lib/router.ts";
-import { signInUrl, useSession } from "./lib/session.tsx";
+import { mediaPortalUrl, websiteUrl } from "./lib/env.ts";
+import { caseReferenceFromPath, mediaReferenceFromPath, usePath } from "./lib/router.ts";
+import { useSession } from "./lib/session.tsx";
 import { CaseQueueView } from "./views/case-queue-view.tsx";
+import { CaseRequestView } from "./views/case-request-view.tsx";
 import { MediaQueueView } from "./views/media-queue-view.tsx";
+import { MediaRequestView } from "./views/media-request-view.tsx";
 
-function Gate({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action: ReactNode;
-}) {
+function Redirecting() {
   return (
-    <div className="grid min-h-svh place-items-center px-6 py-16">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">{action}</CardContent>
-      </Card>
+    <div className="grid min-h-svh place-items-center">
+      <Spinner className="size-6" />
     </div>
   );
 }
@@ -46,43 +23,25 @@ export function App() {
   const path = usePath();
   const { session, loading } = useSession();
 
-  if (loading) {
-    return (
-      <div className="grid min-h-svh place-items-center">
-        <Spinner className="size-6" />
-      </div>
-    );
+  // The server redirects too; this covers a session that expires or changes while the app is open.
+  useEffect(() => {
+    if (loading) return;
+    if (!session) {
+      window.location.replace(websiteUrl());
+      return;
+    }
+    if (session.role === "Press") {
+      window.location.replace(mediaPortalUrl());
+    }
+  }, [loading, session]);
+
+  if (loading || !session || session.role === "Press") {
+    return <Redirecting />;
   }
 
-  if (!session) {
-    return (
-      <Gate
-        title="Sign in to the control centre"
-        description="The Staff and Admin workspace for Stats SA Rafiki."
-        action={
-          <Button nativeButton={false} render={<a href={signInUrl} />}>
-            Sign in
-          </Button>
-        }
-      />
-    );
-  }
-
-  if (session.role === "Press") {
-    return (
-      <Gate
-        title="Control centre is for Stats SA staff"
-        description={`You are signed in as ${session.role}. Sign in with a Staff or Admin account to manage requests.`}
-        action={
-          <Button variant="outline" nativeButton={false} render={<a href={websiteUrl()} />}>
-            Back to the public site
-          </Button>
-        }
-      />
-    );
-  }
-
-  const onMediaDesk = path === "/media";
+  const mediaReference = mediaReferenceFromPath(path);
+  const caseReference = caseReferenceFromPath(path);
+  const onMediaDesk = path === "/media" || mediaReference !== null;
 
   return (
     <SidebarProvider>
@@ -95,13 +54,23 @@ export function App() {
               {onMediaDesk ? "Media desk" : "POPIA case queue"}
             </span>
             <span className="font-mono text-[10px] text-muted-foreground">
-              {onMediaDesk ? "media fact-check review" : "staff & admin workspace"}
+              {mediaReference ??
+                caseReference ??
+                (onMediaDesk ? "media fact-check review" : "staff & admin workspace")}
             </span>
           </div>
         </header>
 
         <div className="flex flex-1 flex-col p-4 md:p-6">
-          {onMediaDesk ? <MediaQueueView /> : <CaseQueueView />}
+          {mediaReference ? (
+            <MediaRequestView reference={mediaReference} />
+          ) : onMediaDesk ? (
+            <MediaQueueView />
+          ) : caseReference ? (
+            <CaseRequestView reference={caseReference} />
+          ) : (
+            <CaseQueueView />
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>

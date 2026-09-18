@@ -17,3 +17,15 @@ export function usePath(): string {
 
   return path;
 }
+
+/** The media request reference for a `/media/:reference` path, or null. */
+export function mediaReferenceFromPath(path: string): string | null {
+  const match = normalizePath(path).match(/^\/media\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]).toUpperCase() : null;
+}
+
+/** The POPIA case reference for a `/cases/:reference` path, or null. */
+export function caseReferenceFromPath(path: string): string | null {
+  const match = normalizePath(path).match(/^\/cases\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]).toUpperCase() : null;
+}
