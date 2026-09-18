@@ -4,5 +4,5 @@
  */
 export const env = {
   /** Optional. Base URL of the Rafiki agent API; defaults to the local API. */
-  apiBase: import.meta.env.VITE_API_BASE || "http://localhost:3002",
+  apiBase: import.meta.env.VITE_API_BASE || "http://localhost:3001",
 } as const;

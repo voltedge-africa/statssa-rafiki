@@ -39,7 +39,7 @@ and wastes their time. Treat every command as if it must return in seconds.
   verified with one short, bounded check (curl/`ss`), not by tailing or waiting.
 - **Never `pkill -f <pattern>` or `pgrep -f <pattern>` when the pattern can match the
   invoking shell's own command line.** That kills the shell and the command hangs. Kill by
-  PID or process group read from `ss -ltnp` / `ps`, by port (`fuser -k 3002/tcp`), or make
+  PID or process group read from `ss -ltnp` / `ps`, by port (`fuser -k 3001/tcp`), or make
   the pattern not self-match (e.g. `[n]est start`).
 - **Cap every wait.** No unbounded `sleep`, `wait`, retry loop, or log tail. Sleep only for
   a fixed, short interval and give up after a bounded number of checks.

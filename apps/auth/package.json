@@ -7,7 +7,7 @@
     "dev": "vp dev",
     "build": "tsc && vp build",
     "preview": "vp preview",
-    "server": "PORT=3001 bun run --hot auth/index.ts",
+    "server": "PORT=3000 bun run --hot auth/index.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:generate": "drizzle-kit generate",
@@ -17,6 +17,7 @@
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
     "@voltedge/auth-contract": "workspace:*",
+    "@voltedge/popia-contract": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.8",
     "nodemailer": "^10.0.10",

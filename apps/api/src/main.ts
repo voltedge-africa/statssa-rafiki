@@ -13,7 +13,7 @@ async function bootstrap() {
     credentials: false,
   });
 
-  const port = numberOrDefault("API_PORT", 3002);
+  const port = numberOrDefault("API_PORT", 3001);
   await app.listen(port);
   Logger.log(`API listening on http://localhost:${port}`, "Bootstrap");
 }

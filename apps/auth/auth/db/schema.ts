@@ -1,7 +1,16 @@
-import { pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { ROLES } from "@voltedge/auth-contract";
+import { index, integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  POPIA_EVENT_KINDS,
+  POPIA_EVENT_VISIBILITIES,
+  POPIA_REQUEST_STATUSES,
+  POPIA_REQUEST_TYPES,
+} from "@voltedge/popia-contract";
 
-export const roleEnum = pgEnum("role", ROLES);
+// Kept in step with ROLES in @voltedge/auth-contract. Inlined because drizzle-kit loads this
+// schema in CommonJS, and the auth contract's build pulls in OpenAuth, which it cannot require.
+const ROLE_VALUES = ["Press", "Staff", "Admin"] as const;
+
+export const roleEnum = pgEnum("role", ROLE_VALUES);
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -13,3 +22,61 @@ export const users = pgTable("users", {
 
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
+
+export const popiaRequestTypeEnum = pgEnum("popia_request_type", POPIA_REQUEST_TYPES);
+export const popiaRequestStatusEnum = pgEnum("popia_request_status", POPIA_REQUEST_STATUSES);
+export const popiaEventKindEnum = pgEnum("popia_event_kind", POPIA_EVENT_KINDS);
+export const popiaEventVisibilityEnum = pgEnum("popia_event_visibility", POPIA_EVENT_VISIBILITIES);
+
+export const popiaRequests = pgTable(
+  "popia_requests",
+  {
+    id: text("id").primaryKey(),
+    reference: text("reference").notNull().unique(),
+    type: popiaRequestTypeEnum("type").notNull(),
+    status: popiaRequestStatusEnum("status").notNull().default("submitted"),
+    requesterName: text("requester_name").notNull(),
+    requesterEmail: text("requester_email").notNull(),
+    requesterPhone: text("requester_phone"),
+    requesterId: text("requester_id").references(() => users.id, { onDelete: "set null" }),
+    details: text("details").notNull(),
+    desiredOutcome: text("desired_outcome"),
+    resolution: text("resolution"),
+    assignedTo: text("assigned_to").references(() => users.id, { onDelete: "set null" }),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("popia_requests_status_idx").on(table.status),
+    index("popia_requests_email_idx").on(table.requesterEmail),
+    index("popia_requests_assigned_idx").on(table.assignedTo),
+  ],
+);
+
+export type PopiaRequestRow = typeof popiaRequests.$inferSelect;
+export type NewPopiaRequestRow = typeof popiaRequests.$inferInsert;
+
+export const popiaRequestEvents = pgTable(
+  "popia_request_events",
+  {
+    id: text("id").primaryKey(),
+    seq: integer("seq").generatedAlwaysAsIdentity(),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => popiaRequests.id, { onDelete: "cascade" }),
+    kind: popiaEventKindEnum("kind").notNull(),
+    visibility: popiaEventVisibilityEnum("visibility").notNull().default("internal"),
+    fromStatus: popiaRequestStatusEnum("from_status"),
+    toStatus: popiaRequestStatusEnum("to_status"),
+    actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+    actorLabel: text("actor_label").notNull(),
+    message: text("message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("popia_request_events_request_idx").on(table.requestId, table.seq)],
+);
+
+export type PopiaRequestEventRow = typeof popiaRequestEvents.$inferSelect;
+export type NewPopiaRequestEventRow = typeof popiaRequestEvents.$inferInsert;

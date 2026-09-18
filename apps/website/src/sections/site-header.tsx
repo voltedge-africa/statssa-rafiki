@@ -12,7 +12,8 @@ import {
   SheetTrigger,
 } from "@voltedge/ui";
 
-import { ROLE_HOME, signInUrl, useSession } from "../lib/session.tsx";
+import { workspaceHome } from "../lib/control-centre.ts";
+import { signInUrl, useSession } from "../lib/session.tsx";
 
 const navigation = [
   { href: "#how-it-works", label: "How it works" },
@@ -57,7 +58,7 @@ function SessionActions() {
         variant="outline"
         size="sm"
         nativeButton={false}
-        render={<a href={ROLE_HOME[session.role]} />}
+        render={<a href={workspaceHome(session.role)} />}
       >
         <Badge variant="secondary">{session.role}</Badge>
         Workspace
@@ -82,7 +83,7 @@ function MobileSessionActions() {
                 variant="outline"
                 size="sm"
                 nativeButton={false}
-                render={<a href={ROLE_HOME[session.role]} />}
+                render={<a href={workspaceHome(session.role)} />}
               />
             }
           >

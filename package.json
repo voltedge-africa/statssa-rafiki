@@ -11,8 +11,11 @@
   "scripts": {
     "ready": "vp fmt && vp lint && vp run -r test && vp run -r build",
     "dev": "vp run website#dev",
+    "dev:all": "vp run @voltedge/auth-contract#build && vp run @voltedge/popia-contract#build && vp run @voltedge/popia-ui#build && concurrently -k -n auth,api,web,public,control -c blue,green,magenta,cyan,yellow \"vp run dev:auth\" \"vp run dev:api\" \"vp run dev\" \"vp run dev:public\" \"vp run dev:control\"",
     "dev:auth": "vp run auth#server",
     "dev:api": "vp run api#dev",
+    "dev:public": "vp run public-portal#dev",
+    "dev:control": "vp run control-centre#dev",
     "db:up": "vp run auth#db:up",
     "db:down": "vp run auth#db:down",
     "db:generate": "vp run auth#db:generate",
@@ -23,6 +26,7 @@
     "prepare": "vp config"
   },
   "devDependencies": {
+    "concurrently": "^10.0.5",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

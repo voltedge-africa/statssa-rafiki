@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient } from "@openauthjs/openauth/client";
 import type { Plugin } from "vite";
-import { subjects } from "@voltedge/auth-contract";
+import { subjects, type AuthUser } from "@voltedge/auth-contract";
 import type { ServerEnv } from "./env.ts";
 
 const CLIENT_ID = "website";
@@ -9,9 +9,21 @@ const ACCESS_COOKIE = "website_access";
 const REFRESH_COOKIE = "website_refresh";
 const CHALLENGE_COOKIE = "website_challenge";
 
+// Browser calls to this prefix are proxied to the API with the session's access token attached,
+// so tokens stay in httpOnly cookies and the browser never talks to the API cross-origin.
+const API_PREFIX = "/api/popia";
+
 // Pages the client app handles. Anything else that is navigated to (Accept: text/html) gets a
 // real 404 instead of silently falling through to the signed-in role's workspace.
-const SPA_ROUTES = new Set(["/", "/press", "/staff", "/admin"]);
+const SPA_ROUTES = new Set([
+  "/",
+  "/popia",
+  "/popia/track",
+  "/popia/my",
+  "/press",
+  "/staff",
+  "/admin",
+]);
 
 function normalizePath(path: string) {
   const trimmed = path.replace(/\/+$/, "");
@@ -79,7 +91,6 @@ function notFoundPage(path: string) {
       main {
         max-width: 26rem;
         border: 1px solid var(--border);
-        border-radius: 12px;
         padding: 2rem;
         text-align: center;
       }
@@ -134,6 +145,13 @@ function issuerFor(req: IncomingMessage, env: ServerEnv) {
   return `${requestProto(req)}://${requestHostname(req)}:${env.authPort}`;
 }
 
+// Staff and Admin land in the control centre (its own app on port 3006); Press stay on this
+// site. Derived from the request host unless VITE_CONTROL_CENTRE_URL is set.
+function controlCentre(req: IncomingMessage, env: ServerEnv) {
+  if (env.controlCentreUrl) return env.controlCentreUrl;
+  return `${requestProto(req)}://${requestHostname(req)}:3006`;
+}
+
 const clients = new Map<string, ReturnType<typeof createClient>>();
 
 function getClient(req: IncomingMessage, env: ServerEnv) {
@@ -184,8 +202,91 @@ function redirect(res: ServerResponse, location: string, cookies: string[] = [])
   res.end();
 }
 
+function sessionCookies(tokens: { access: string; refresh: string }): string[] {
+  return [
+    serializeCookie(ACCESS_COOKIE, tokens.access, {
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 30,
+      sameSite: "Lax",
+    }),
+    serializeCookie(REFRESH_COOKIE, tokens.refresh, {
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "Lax",
+    }),
+  ];
+}
+
+/**
+ * Resolve the session from the request cookies, refreshing the access token when needed.
+ * Returns the verified user and a currently valid access token, or `null` when anonymous.
+ */
+async function resolveSession(
+  req: IncomingMessage,
+  env: ServerEnv,
+  res: ServerResponse,
+): Promise<{ user: AuthUser; token: string } | null> {
+  const access = getCookie(req.headers.cookie, ACCESS_COOKIE);
+  if (!access) return null;
+
+  const refresh = getCookie(req.headers.cookie, REFRESH_COOKIE);
+  const verified = await getClient(req, env).verify(
+    subjects,
+    access,
+    refresh ? { refresh } : undefined,
+  );
+  if (verified.err) return null;
+
+  if (verified.tokens) res.setHeader("Set-Cookie", sessionCookies(verified.tokens));
+  return {
+    user: verified.subject.properties,
+    token: verified.tokens?.access ?? access,
+  };
+}
+
+async function readBody(req: IncomingMessage): Promise<string | undefined> {
+  if (req.method === "GET" || req.method === "HEAD") return undefined;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Forward an `/api/popia/*` call to the API, attaching the session token when there is one. */
+async function proxy(req: IncomingMessage, res: ServerResponse, env: ServerEnv): Promise<void> {
+  const url = new URL(req.url ?? "/", requestOrigin(req));
+  const suffix = url.pathname.slice(API_PREFIX.length) || "/";
+  const target = `${env.apiBase}/popia${suffix}${url.search}`;
+
+  const session = await resolveSession(req, env, res);
+  const headers: Record<string, string> = {};
+  const contentType = req.headers["content-type"];
+  if (contentType) headers["content-type"] = contentType;
+  if (session) headers.authorization = `Bearer ${session.token}`;
+
+  try {
+    const upstream = await fetch(target, {
+      method: req.method,
+      headers,
+      body: await readBody(req),
+    });
+    res.statusCode = upstream.status;
+    const upstreamType = upstream.headers.get("content-type");
+    if (upstreamType) res.setHeader("Content-Type", upstreamType);
+    res.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch {
+    sendJson(res, 502, { message: "The POPIA API is unreachable. Try again shortly." });
+  }
+}
+
 async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse, next: () => void) {
   const path = (req.url ? new URL(req.url, requestOrigin(req)).pathname : "") || "";
+
+  if (path.startsWith(API_PREFIX)) {
+    await proxy(req, res, env);
+    return;
+  }
 
   if (path === "/auth/login") {
     const redirectURI = `${requestOrigin(req)}/callback`;
@@ -236,54 +337,18 @@ async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse,
 
     const tokens = verified.tokens ?? exchanged.tokens;
     const role = verified.subject.properties.role;
-    const destination = role === "Admin" ? "/admin" : role === "Staff" ? "/staff" : "/press";
-    redirect(res, destination, [
-      serializeCookie(ACCESS_COOKIE, tokens.access, {
-        httpOnly: true,
-        maxAge: 60 * 60 * 24 * 30,
-        sameSite: "Lax",
-      }),
-      serializeCookie(REFRESH_COOKIE, tokens.refresh, {
-        httpOnly: true,
-        maxAge: 60 * 60 * 24 * 365,
-        sameSite: "Lax",
-      }),
-      clearCookie(CHALLENGE_COOKIE),
-    ]);
+    const destination = role === "Press" ? "/press" : controlCentre(req, env);
+    redirect(res, destination, [...sessionCookies(tokens), clearCookie(CHALLENGE_COOKIE)]);
     return;
   }
 
   if (path === "/api/session") {
-    const access = getCookie(req.headers.cookie, ACCESS_COOKIE);
-    const refresh = getCookie(req.headers.cookie, REFRESH_COOKIE);
-    if (!access) {
+    const session = await resolveSession(req, env, res);
+    if (!session) {
       sendJson(res, 401, { user: null });
       return;
     }
-    const verified = await getClient(req, env).verify(
-      subjects,
-      access,
-      refresh ? { refresh } : undefined,
-    );
-    if (verified.err) {
-      sendJson(res, 401, { user: null });
-      return;
-    }
-    if (verified.tokens) {
-      res.setHeader("Set-Cookie", [
-        serializeCookie(ACCESS_COOKIE, verified.tokens.access, {
-          httpOnly: true,
-          maxAge: 60 * 60 * 24 * 30,
-          sameSite: "Lax",
-        }),
-        serializeCookie(REFRESH_COOKIE, verified.tokens.refresh, {
-          httpOnly: true,
-          maxAge: 60 * 60 * 24 * 365,
-          sameSite: "Lax",
-        }),
-      ]);
-    }
-    sendJson(res, 200, { user: verified.subject.properties });
+    sendJson(res, 200, { user: session.user });
     return;
   }
 

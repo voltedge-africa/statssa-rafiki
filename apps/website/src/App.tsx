@@ -1,3 +1,4 @@
+import { PopiaApp } from "./popia/popia-app.tsx";
 import { Capabilities } from "./sections/capabilities.tsx";
 import { Faq } from "./sections/faq.tsx";
 import { Governance } from "./sections/governance.tsx";
@@ -20,7 +21,8 @@ function currentPath() {
 }
 
 export function App() {
-  const required = WORKSPACE_ROLES[currentPath()];
+  const path = currentPath();
+  const required = WORKSPACE_ROLES[path];
 
   if (required) {
     return <Workspace required={required} />;
@@ -31,11 +33,17 @@ export function App() {
       <div className="mx-auto flex min-h-svh w-full max-w-[1200px] flex-col border-x border-border">
         <SiteHeader />
         <main className="flex-1">
-          <Hero />
-          <HowItWorks />
-          <Capabilities />
-          <Governance />
-          <Faq />
+          {path === "/popia" || path.startsWith("/popia/") ? (
+            <PopiaApp path={path} />
+          ) : (
+            <>
+              <Hero />
+              <HowItWorks />
+              <Capabilities />
+              <Governance />
+              <Faq />
+            </>
+          )}
         </main>
         <SiteFooter />
       </div>

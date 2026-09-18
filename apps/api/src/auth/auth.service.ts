@@ -10,7 +10,7 @@ export class AuthService {
   private readonly clients = new Map<string, Client>();
   // Required in production; locally the issuer is derived from the request host and AUTH_PORT.
   private readonly override = IS_PRODUCTION ? required("AUTH_ISSUER") : optional("AUTH_ISSUER");
-  private readonly authPort = orDefault("AUTH_PORT", "3001");
+  private readonly authPort = orDefault("AUTH_PORT", "3000");
 
   private clientFor(issuer: string): Client {
     const cached = this.clients.get(issuer);

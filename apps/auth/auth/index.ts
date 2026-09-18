@@ -167,6 +167,6 @@ const app = issuer({
 // Bun serves this default export. Naming the port lets AUTH_PORT from .env (or PORT, from the
 // `server` script) control the listener that apps/api and apps/website derive the issuer from.
 export default {
-  port: numberOrDefault("AUTH_PORT", numberOrDefault("PORT", 3001)),
+  port: numberOrDefault("AUTH_PORT", numberOrDefault("PORT", 3000)),
   fetch: app.fetch,
 };

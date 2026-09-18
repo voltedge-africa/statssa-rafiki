@@ -13,7 +13,8 @@ import {
   Spinner,
 } from "@voltedge/ui";
 
-import { ROLE_HOME, signInUrl, useSession, type Role } from "../lib/session.tsx";
+import { workspaceHome } from "../lib/control-centre.ts";
+import { signInUrl, useSession, type Role } from "../lib/session.tsx";
 
 export function Workspace({ required }: { required: Role }) {
   const { session, loading, signOut } = useSession();
@@ -62,7 +63,7 @@ export function Workspace({ required }: { required: Role }) {
             <Button variant="outline" onClick={() => void signOut()}>
               Switch account
             </Button>
-            <Button nativeButton={false} render={<a href={ROLE_HOME[session.role]} />}>
+            <Button nativeButton={false} render={<a href={workspaceHome(session.role)} />}>
               My workspace
             </Button>
           </CardFooter>

@@ -1,0 +1,9 @@
+@import "@voltedge/ui/globals.css";
+
+@source "../../../packages/ui/src";
+@source "../../../packages/popia-ui/src";
+@source "../src";
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}

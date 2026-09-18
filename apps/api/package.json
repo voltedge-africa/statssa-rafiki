@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "vp run @voltedge/auth-contract#build",
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
@@ -24,9 +23,11 @@
     "@openauthjs/openauth": "^0.4.3",
     "@voltedge/agent-contract": "workspace:*",
     "@voltedge/auth-contract": "workspace:*",
+    "@voltedge/popia-contract": "workspace:*",
     "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.3",

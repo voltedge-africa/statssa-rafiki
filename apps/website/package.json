@@ -11,6 +11,8 @@
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
     "@voltedge/auth-contract": "workspace:*",
+    "@voltedge/popia-contract": "workspace:*",
+    "@voltedge/popia-ui": "workspace:*",
     "@voltedge/ui": "workspace:*",
     "lucide-react": "^1.46.0",
     "react": "^19.2.8",

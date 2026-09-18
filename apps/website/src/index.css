@@ -1,7 +1,13 @@
 @import "@voltedge/ui/globals.css";
 
 @source "../../../packages/ui/src";
+@source "../../../packages/popia-ui/src";
 @source "../src";
+
+/* The website is the sharp-cornered exception: zero the shared radius scale. */
+:root {
+  --radius: 0px;
+}
 
 ::selection {
   background: color-mix(in srgb, var(--primary) 22%, transparent);
