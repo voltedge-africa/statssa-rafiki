@@ -2,6 +2,10 @@ import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type { AuthUser } from "@voltedge/auth-contract";
+import type {
+  MediaOfficialResponseListResponse,
+  MediaRequestSummaryListResponse,
+} from "@voltedge/media-contract";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { AppModule } from "../src/app.module.ts";
@@ -67,7 +71,14 @@ describe("media api", () => {
 
   const media = {
     submit: vi.fn(async () => submitted),
-    listMine: vi.fn(async () => []),
+    listMine: vi.fn(async (): Promise<MediaRequestSummaryListResponse> => ({
+      requests: [],
+      total: 0,
+    })),
+    listOfficialResponses: vi.fn(async (): Promise<MediaOfficialResponseListResponse> => ({
+      responses: [],
+      total: 0,
+    })),
     trackForOwner: vi.fn(async () => ({ ...submitted, events: [] })),
     withdraw: vi.fn(async () => ({ ...submitted, status: "withdrawn" })),
     listForStaff: vi.fn(async () => ({ requests: [], total: 0 })),
@@ -134,13 +145,64 @@ describe("media api", () => {
       .get("/media/requests/mine")
       .set("Authorization", "Bearer press-token");
     expect(mine.status).toBe(200);
-    expect(media.listMine).toHaveBeenCalledWith(users["press-token"]);
+    expect(media.listMine).toHaveBeenCalledWith(users["press-token"], {
+      search: undefined,
+      status: undefined,
+      limit: 50,
+      offset: 0,
+    });
 
     const tracked = await request(app.getHttpServer())
       .get("/media/requests/mine/media-2026-abc123")
       .set("Authorization", "Bearer press-token");
     expect(tracked.status).toBe(200);
     expect(media.trackForOwner).toHaveBeenCalledWith("MEDIA-2026-ABC123", users["press-token"]);
+  });
+
+  it("searches and paginates the requester's own list", async () => {
+    const response = await request(app.getHttpServer())
+      .get("/media/requests/mine?q=inflation&status=approved&limit=10&offset=5")
+      .set("Authorization", "Bearer press-token");
+
+    expect(response.status).toBe(200);
+    expect(media.listMine).toHaveBeenCalledWith(users["press-token"], {
+      search: "inflation",
+      status: "approved",
+      limit: 10,
+      offset: 5,
+    });
+  });
+
+  it("rejects an unknown status on the owner list", async () => {
+    const response = await request(app.getHttpServer())
+      .get("/media/requests/mine?status=banana")
+      .set("Authorization", "Bearer press-token");
+    expect(response.status).toBe(400);
+  });
+
+  it("serves the official responses feed to any signed-in user", async () => {
+    media.listOfficialResponses.mockResolvedValueOnce({
+      responses: [
+        {
+          reference: "MEDIA-2026-ABC123",
+          claim: "Is it true that headline inflation fell to 2%?",
+          response: "Headline inflation was 3.2% in July 2026 [cpi-index#4].",
+          sources: [],
+          approvedAt: "2026-09-18T00:00:00.000Z",
+        },
+      ],
+      total: 1,
+    });
+
+    const response = await request(app.getHttpServer())
+      .get("/media/requests/feed?limit=5")
+      .set("Authorization", "Bearer press-token");
+    expect(response.status).toBe(200);
+    expect(response.body.responses).toHaveLength(1);
+    expect(media.listOfficialResponses).toHaveBeenCalledWith({ limit: 5, offset: 0 });
+
+    const anonymous = await request(app.getHttpServer()).get("/media/requests/feed");
+    expect(anonymous.status).toBe(401);
   });
 
   it("lets the owner withdraw an open request", async () => {

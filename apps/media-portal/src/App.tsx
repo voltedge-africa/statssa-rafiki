@@ -1,7 +1,7 @@
 import { SiteFooter } from "./components/site-footer.tsx";
 import { SiteHeader } from "./components/site-header.tsx";
 import { referenceFromPath, usePath } from "./lib/router.ts";
-import { HomeView } from "./views/home-view.tsx";
+import { LandingView } from "./views/landing-view.tsx";
 import { MyRequestsView } from "./views/my-requests-view.tsx";
 import { NotFoundView } from "./views/not-found-view.tsx";
 import { RequestDetailView } from "./views/request-detail-view.tsx";
@@ -16,8 +16,8 @@ export function App() {
       <div className="mx-auto flex min-h-svh w-full max-w-[1200px] flex-col border-x border-border">
         <SiteHeader />
         <main className="flex-1">
-          {path === "/" ? (
-            <HomeView />
+          {path === "/" || path === "/feed" ? (
+            <LandingView />
           ) : path === "/request" ? (
             <RequestView />
           ) : path === "/requests" ? (

@@ -98,6 +98,21 @@ export interface MediaQueueFilters {
   offset: number;
 }
 
+/** Filters for a requester's own list (`GET /media/requests/mine`). */
+export interface MediaOwnerFilters {
+  requesterId: string;
+  status?: MediaRequestStatus;
+  search?: string;
+  limit: number;
+  offset: number;
+}
+
+/** Filters for the official-responses feed (`GET /media/requests/feed`). */
+export interface MediaFeedFilters {
+  limit: number;
+  offset: number;
+}
+
 export interface MediaQueuePage {
   requests: MediaRequestRecord[];
   total: number;
@@ -222,14 +237,45 @@ export class MediaRepository implements OnModuleDestroy {
     return row;
   }
 
-  async listByRequesterId(userId: string): Promise<MediaRequestRecord[]> {
-    return this.sql<MediaRequestRecord[]>`
-      SELECT ${this.sql.unsafe(REQUEST_COLUMNS)}
+  async listByRequesterId(filters: MediaOwnerFilters): Promise<MediaQueuePage> {
+    const conditions = [this.sql`r.requester_id = ${filters.requesterId}`];
+    if (filters.status) conditions.push(this.sql`r.status = ${filters.status}`);
+    if (filters.search) {
+      const pattern = `%${filters.search}%`;
+      conditions.push(this.sql`(r.reference ILIKE ${pattern} OR r.claim ILIKE ${pattern})`);
+    }
+    const where = conditions.reduce((query, condition) => this.sql`${query} AND ${condition}`);
+
+    const rows = await this.sql<StaffRow[]>`
+      SELECT ${this.sql.unsafe(REQUEST_COLUMNS)}, COUNT(*) OVER()::int AS total
       FROM media_requests r
       LEFT JOIN users u ON u.id = r.assigned_to
-      WHERE r.requester_id = ${userId}
+      WHERE ${where}
       ORDER BY r.created_at DESC
+      LIMIT ${filters.limit} OFFSET ${filters.offset}
     `;
+
+    return {
+      requests: rows.map(({ total: _total, ...request }) => request),
+      total: rows[0]?.total ?? 0,
+    };
+  }
+
+  /** Approved responses for the signed-in media feed, newest approval first. */
+  async listApproved(filters: MediaFeedFilters): Promise<MediaQueuePage> {
+    const rows = await this.sql<StaffRow[]>`
+      SELECT ${this.sql.unsafe(REQUEST_COLUMNS)}, COUNT(*) OVER()::int AS total
+      FROM media_requests r
+      LEFT JOIN users u ON u.id = r.assigned_to
+      WHERE r.status = 'approved' AND r.approved_response IS NOT NULL
+      ORDER BY r.approved_at DESC NULLS LAST, r.created_at DESC
+      LIMIT ${filters.limit} OFFSET ${filters.offset}
+    `;
+
+    return {
+      requests: rows.map(({ total: _total, ...request }) => request),
+      total: rows[0]?.total ?? 0,
+    };
   }
 
   async listForStaff(filters: MediaQueueFilters): Promise<MediaQueuePage> {

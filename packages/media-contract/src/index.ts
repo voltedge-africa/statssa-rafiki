@@ -185,6 +185,14 @@ export const createMediaNoteSchema = object({
 
 export type CreateMediaNoteInput = InferOutput<typeof createMediaNoteSchema>;
 
+/** Query for `GET /media/requests/mine` (the owner's own list, used as the media-room sidebar). */
+export const mediaRequestListQuerySchema = object({
+  q: optional(pipe(string(), trim(), maxLength(200, "Use 200 characters or fewer."))),
+  status: optional(picklist(MEDIA_REQUEST_STATUSES)),
+});
+
+export type MediaRequestListQuery = InferOutput<typeof mediaRequestListQuerySchema>;
+
 /** A reference passage the AI draft was grounded in. */
 export interface MediaDraftSource {
   chunkId: number;
@@ -222,6 +230,50 @@ export interface MediaRequestPublic {
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
+}
+
+/** A compact row for owner-facing lists (the media-room sidebar). No requester identity. */
+export interface MediaRequestSummary {
+  reference: string;
+  status: MediaRequestStatus;
+  claim: string;
+  deadline: string | null;
+  createdAt: string;
+  /** True once a Staff/Admin approval has released an official response. */
+  hasResponse: boolean;
+}
+
+export function toRequestSummary(request: MediaRequestPublic): MediaRequestSummary {
+  return {
+    reference: request.reference,
+    status: request.status,
+    claim: request.claim,
+    deadline: request.deadline,
+    createdAt: request.createdAt,
+    hasResponse: request.approvedResponse !== null,
+  };
+}
+
+export interface MediaRequestSummaryListResponse {
+  requests: MediaRequestSummary[];
+  total: number;
+}
+
+/**
+ * An approved, publishable response as listed in the media-room feed. Deliberately
+ * omits the requester's name, email, outlet and context.
+ */
+export interface MediaOfficialResponse {
+  reference: string;
+  claim: string;
+  response: string;
+  sources: MediaDraftSource[];
+  approvedAt: string;
+}
+
+export interface MediaOfficialResponseListResponse {
+  responses: MediaOfficialResponse[];
+  total: number;
 }
 
 export interface MediaRequestEventView {

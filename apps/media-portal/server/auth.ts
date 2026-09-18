@@ -17,7 +17,7 @@ const API_PREFIX = "/api/media";
 const ACCESS_MAX_AGE = 60 * 60 * 24 * 30;
 const REFRESH_MAX_AGE = 60 * 60 * 24 * 365;
 
-const SPA_ROUTES = new Set(["/", "/request", "/requests"]);
+const SPA_ROUTES = new Set(["/", "/feed", "/request", "/requests"]);
 
 function normalizePath(path: string) {
   const trimmed = path.replace(/\/+$/, "");

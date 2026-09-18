@@ -14,6 +14,7 @@ import {
   approveMediaRequestSchema,
   createMediaNoteSchema,
   isMediaRequestStatus,
+  mediaRequestListQuerySchema,
   rejectMediaRequestSchema,
   submitMediaRequestSchema,
   updateMediaRequestSchema,
@@ -70,8 +71,18 @@ export class MediaController {
   }
 
   @Get("mine")
-  async mine(@CurrentUser() user: AuthUser) {
-    return { requests: await this.media.listMine(user) };
+  async mine(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
+    const parsed = safeParse(mediaRequestListQuerySchema, {
+      q: query.q,
+      status: query.status,
+    });
+    if (!parsed.success) throw validationError(parsed.issues);
+    return this.media.listMine(user, {
+      status: parsed.output.status,
+      search: parsed.output.q?.trim() || undefined,
+      limit: boundedInteger(query.limit, 50, 1, 100),
+      offset: boundedInteger(query.offset, 0, 0, 10_000),
+    });
   }
 
   @Get("mine/:reference")
@@ -83,6 +94,15 @@ export class MediaController {
   @HttpCode(200)
   async withdraw(@Param("reference") reference: string, @CurrentUser() user: AuthUser) {
     return { request: await this.media.withdraw(reference.toUpperCase(), user) };
+  }
+
+  /** Any signed-in account can browse the approved official responses. */
+  @Get("feed")
+  feed(@Query() query: Record<string, string | undefined>) {
+    return this.media.listOfficialResponses({
+      limit: boundedInteger(query.limit, 25, 1, 100),
+      offset: boundedInteger(query.offset, 0, 0, 10_000),
+    });
   }
 
   @Get()

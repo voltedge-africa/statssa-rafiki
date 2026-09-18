@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { isOpenStatus, type MediaRequestPublic } from "@voltedge/media-contract";
+import { isOpenStatus, type MediaRequestSummary } from "@voltedge/media-contract";
 import {
   Alert,
   AlertDescription,
@@ -18,13 +18,13 @@ import { ApiError, StatusBadge, deadlinePhrase, listMyMediaRequests } from "@vol
 import { SignInGate } from "../components/sign-in-gate.tsx";
 import { useSession } from "../lib/session.tsx";
 
-function isActive(request: MediaRequestPublic): boolean {
+function isActive(request: MediaRequestSummary): boolean {
   return request.status === "submitted" || request.status === "analysing";
 }
 
 export function MyRequestsView() {
   const { session, loading } = useSession();
-  const [requests, setRequests] = useState<MediaRequestPublic[] | null>(null);
+  const [requests, setRequests] = useState<MediaRequestSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -137,7 +137,7 @@ export function MyRequestsView() {
   );
 }
 
-function RequestList({ requests }: { requests: MediaRequestPublic[] }) {
+function RequestList({ requests }: { requests: MediaRequestSummary[] }) {
   return (
     <ul className="overflow-hidden rounded-lg border border-border">
       {requests.map((request) => (
@@ -155,7 +155,7 @@ function RequestList({ requests }: { requests: MediaRequestPublic[] }) {
             <span className="line-clamp-2 max-w-[80ch] text-sm font-medium">{request.claim}</span>
             <span className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground">
               <span>{deadlinePhrase(request.deadline, request.status)}</span>
-              {request.approvedResponse ? <span>response available</span> : null}
+              {request.hasResponse ? <span>response available</span> : null}
             </span>
           </a>
         </li>

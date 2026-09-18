@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, FileCheck2, Landmark, ShieldCheck } from "lucide-react";
 
-import type { MediaRequestPublic } from "@voltedge/media-contract";
+import type { MediaRequestSummary } from "@voltedge/media-contract";
 import {
   Alert,
   AlertDescription,
@@ -52,7 +52,7 @@ const COMMITMENTS = [
   {
     icon: ShieldCheck,
     title: "Access-controlled",
-    body: "Requests and drafts are visible only to you and the Stats SA reviewers working on your query.",
+    body: "Your requests and drafts stay private to you and the Stats SA reviewers working on your query. Approved responses are published in the media room for other signed-in journalists.",
   },
 ] as const;
 
@@ -77,7 +77,7 @@ function ShareIcon(props: { className?: string }) {
   );
 }
 
-function RecentRequests({ requests }: { requests: MediaRequestPublic[] }) {
+function RecentRequests({ requests }: { requests: MediaRequestSummary[] }) {
   if (requests.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -113,7 +113,7 @@ function RecentRequests({ requests }: { requests: MediaRequestPublic[] }) {
 
 export function HomeView() {
   const { session } = useSession();
-  const [requests, setRequests] = useState<MediaRequestPublic[] | null>(null);
+  const [requests, setRequests] = useState<MediaRequestSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const signInFailed =
     new URLSearchParams(window.location.search).get("error") === "sign_in_failed";

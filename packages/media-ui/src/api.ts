@@ -1,9 +1,12 @@
 import type {
   ApproveMediaRequestInput,
   CreateMediaNoteInput,
+  MediaOfficialResponseListResponse,
   MediaRequestListResponse,
   MediaRequestPublic,
   MediaRequestStaffDetail,
+  MediaRequestStatus,
+  MediaRequestSummaryListResponse,
   MediaRequestTracking,
   RejectMediaRequestInput,
   SubmitMediaRequestInput,
@@ -58,8 +61,35 @@ export function submitMediaRequest(input: SubmitMediaRequestInput) {
   });
 }
 
-export function listMyMediaRequests() {
-  return request<{ requests: MediaRequestPublic[] }>("/requests/mine");
+export interface MediaOwnerListParams {
+  q?: string;
+  status?: MediaRequestStatus;
+  limit?: number;
+  offset?: number;
+}
+
+function queryString(params: object): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === "string" && value !== "") search.set(key, value);
+    else if (typeof value === "number") search.set(key, String(value));
+  }
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
+export function listMyMediaRequests(params: MediaOwnerListParams = {}) {
+  return request<MediaRequestSummaryListResponse>(`/requests/mine${queryString(params)}`);
+}
+
+export interface MediaFeedParams {
+  limit?: number;
+  offset?: number;
+}
+
+/** Every approved official response, for the signed-in media-room feed. */
+export function listOfficialResponses(params: MediaFeedParams = {}) {
+  return request<MediaOfficialResponseListResponse>(`/requests/feed${queryString(params)}`);
 }
 
 export function getMyMediaRequest(reference: string) {
@@ -76,7 +106,7 @@ export function withdrawMediaRequest(reference: string) {
 }
 
 export interface MediaQueueParams {
-  status?: string;
+  status?: MediaRequestStatus;
   assigned?: string;
   q?: string;
 }

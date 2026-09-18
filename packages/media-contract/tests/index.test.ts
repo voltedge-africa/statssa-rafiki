@@ -9,8 +9,11 @@ import {
   isOpenStatus,
   isTerminalStatus,
   MEDIA_REQUEST_STATUSES,
+  mediaRequestListQuerySchema,
   rejectMediaRequestSchema,
   submitMediaRequestSchema,
+  toRequestSummary,
+  type MediaRequestPublic,
   updateMediaRequestSchema,
 } from "../src/index.ts";
 
@@ -118,4 +121,49 @@ test("extracts the chunk ids cited in a response", () => {
     extractCitationIds("Inflation eased to 3.2% [cpi-index#12] and food slowed [cpi#4]."),
   ).toEqual([12, 4]);
   expect(extractCitationIds("No citations here.")).toEqual([]);
+});
+
+const publicRequest: MediaRequestPublic = {
+  reference: "MEDIA-2026-ABC123",
+  status: "awaiting_review",
+  requesterName: "Sipho Dlamini",
+  claim: "Is it true that headline inflation fell to 2% in July 2026?",
+  context: null,
+  outlet: "The Daily Line",
+  deadline: null,
+  approvedResponse: null,
+  approvedSources: [],
+  approvedAt: null,
+  rejectedReason: null,
+  createdAt: "2026-09-18T00:00:00.000Z",
+  updatedAt: "2026-09-18T00:00:00.000Z",
+  closedAt: null,
+};
+
+test("summarises a request without leaking reviewer-only fields", () => {
+  const approved: MediaRequestPublic = {
+    ...publicRequest,
+    status: "approved",
+    approvedResponse: "3.2%",
+  };
+  expect(toRequestSummary(approved)).toEqual({
+    reference: "MEDIA-2026-ABC123",
+    status: "approved",
+    claim: "Is it true that headline inflation fell to 2% in July 2026?",
+    deadline: null,
+    createdAt: "2026-09-18T00:00:00.000Z",
+    hasResponse: true,
+  });
+  expect(toRequestSummary(publicRequest).hasResponse).toBe(false);
+});
+
+test("validates the owner list query and rejects an unknown status", () => {
+  const parsed = safeParse(mediaRequestListQuerySchema, {
+    q: "  inflation ",
+    status: "approved",
+  });
+  expect(parsed.success).toBe(true);
+  expect(parsed.output).toEqual({ q: "inflation", status: "approved" });
+
+  expect(safeParse(mediaRequestListQuerySchema, { status: "banana" }).success).toBe(false);
 });

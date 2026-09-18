@@ -75,7 +75,7 @@ export function RequestDetailView({ reference }: { reference: string }) {
     return (
       <SignInGate
         title="Sign in to open this request"
-        description="Approved responses and their references are private to the account that filed the request."
+        description="Your request history stays private to your account. Approved responses are also listed in the media room feed."
       />
     );
   }

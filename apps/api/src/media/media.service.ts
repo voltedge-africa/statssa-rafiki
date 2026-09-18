@@ -11,17 +11,20 @@ import {
   canTransition,
   extractCitationIds,
   isTerminalStatus,
+  toRequestSummary,
   type ApproveMediaRequestInput,
   type CreateMediaNoteInput,
   type MediaAiDraft,
   type MediaDraftSource,
   type MediaEventVisibility,
+  type MediaOfficialResponseListResponse,
   type MediaRequestEventView,
   type MediaRequestListResponse,
   type MediaRequestPublic,
   type MediaRequestStaff,
   type MediaRequestStaffDetail,
   type MediaRequestStatus,
+  type MediaRequestSummaryListResponse,
   type MediaRequestTracking,
   type RejectMediaRequestInput,
   type SubmitMediaRequestInput,
@@ -46,6 +49,20 @@ export interface MediaQueueQuery {
   /** `"me"`, `"unassigned"`, or a reviewer user id. */
   assigned?: string;
   search?: string;
+  limit: number;
+  offset: number;
+}
+
+/** Query for a requester's own list (`GET /media/requests/mine`). */
+export interface MediaMineQuery {
+  status?: MediaRequestStatus;
+  search?: string;
+  limit: number;
+  offset: number;
+}
+
+/** Query for the official-responses feed (`GET /media/requests/feed`). */
+export interface MediaFeedQuery {
   limit: number;
   offset: number;
 }
@@ -167,9 +184,37 @@ export class MediaService {
     return view;
   }
 
-  async listMine(user: AuthUser): Promise<MediaRequestPublic[]> {
-    const records = await this.repo.listByRequesterId(user.id);
-    return records.map(toPublicView);
+  async listMine(user: AuthUser, query: MediaMineQuery): Promise<MediaRequestSummaryListResponse> {
+    const page = await this.repo.listByRequesterId({
+      requesterId: user.id,
+      status: query.status,
+      search: query.search,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    return {
+      requests: page.requests.map((record) => toRequestSummary(toPublicView(record))),
+      total: page.total,
+    };
+  }
+
+  /** The signed-in media feed: every approved official response, newest first. */
+  async listOfficialResponses(query: MediaFeedQuery): Promise<MediaOfficialResponseListResponse> {
+    const page = await this.repo.listApproved({ limit: query.limit, offset: query.offset });
+    const responses = page.requests.flatMap((record) =>
+      record.approvedResponse
+        ? [
+            {
+              reference: record.reference,
+              claim: record.claim,
+              response: record.approvedResponse,
+              sources: record.approvedSources ?? [],
+              approvedAt: (record.approvedAt ?? record.updatedAt).toISOString(),
+            },
+          ]
+        : [],
+    );
+    return { responses, total: page.total };
   }
 
   async trackForOwner(reference: string, user: AuthUser): Promise<MediaRequestTracking> {

@@ -6,6 +6,8 @@ import { MediaDraftService } from "./media-draft.service.ts";
 import { MediaService } from "./media.service.ts";
 import type {
   MediaEventRecord,
+  MediaFeedFilters,
+  MediaOwnerFilters,
   MediaQueueFilters,
   MediaQueuePage,
   MediaRequestPatch,
@@ -77,8 +79,33 @@ class FakeRepository {
     return this.requests.find((request) => request.reference === reference);
   }
 
-  async listByRequesterId(userId: string): Promise<MediaRequestRecord[]> {
-    return this.requests.filter((request) => request.requesterId === userId);
+  async listByRequesterId(filters: MediaOwnerFilters): Promise<MediaQueuePage> {
+    const matching = this.requests.filter((request) => {
+      if (request.requesterId !== filters.requesterId) return false;
+      if (filters.status && request.status !== filters.status) return false;
+      if (filters.search) {
+        const needle = filters.search.toLowerCase();
+        const hit =
+          request.reference.toLowerCase().includes(needle) ||
+          request.claim.toLowerCase().includes(needle);
+        if (!hit) return false;
+      }
+      return true;
+    });
+    return {
+      requests: matching.slice(filters.offset, filters.offset + filters.limit),
+      total: matching.length,
+    };
+  }
+
+  async listApproved(filters: MediaFeedFilters): Promise<MediaQueuePage> {
+    const matching = this.requests
+      .filter((request) => request.status === "approved")
+      .sort((a, b) => (b.approvedAt?.getTime() ?? 0) - (a.approvedAt?.getTime() ?? 0));
+    return {
+      requests: matching.slice(filters.offset, filters.offset + filters.limit),
+      total: matching.length,
+    };
   }
 
   async listForStaff(filters: MediaQueueFilters): Promise<MediaQueuePage> {
@@ -363,11 +390,57 @@ describe("MediaService", () => {
     expect(fake.requests[0]?.aiDraft).toContain("fresh grounded draft");
   });
 
-  it("returns only the requester's own requests", async () => {
+  it("returns only the requester's own requests, as summaries with a total", async () => {
     await service.submit(submission, press);
-    const mine = await service.listMine(press);
-    expect(mine).toHaveLength(1);
-    expect(await service.listMine(staff)).toHaveLength(0);
+    await service.submit(
+      { ...submission, claim: "Did GDP grow in the second quarter of 2026?" },
+      press,
+    );
+    await service.submit({ ...submission, claim: "A staff member's unrelated query." }, staff);
+
+    const mine = await service.listMine(press, { limit: 25, offset: 0 });
+    expect(mine.total).toBe(2);
+    expect(mine.requests).toHaveLength(2);
+    expect(mine.requests.every((request) => !("requesterName" in request))).toBe(true);
+    expect(mine.requests[0]).toMatchObject({ hasResponse: false, status: expect.any(String) });
+  });
+
+  it("searches and paginates the requester's own requests", async () => {
+    await service.submit({ ...submission, claim: "Is headline inflation 2% in July 2026?" }, press);
+    await service.submit(
+      { ...submission, claim: "Did GDP grow in the second quarter of 2026?" },
+      press,
+    );
+
+    const hit = await service.listMine(press, { search: "GDP", limit: 25, offset: 0 });
+    expect(hit.total).toBe(1);
+    expect(hit.requests[0]?.claim).toContain("GDP");
+
+    const page = await service.listMine(press, { limit: 1, offset: 1 });
+    expect(page.requests).toHaveLength(1);
+    expect(page.total).toBe(2);
+  });
+
+  it("feeds approved official responses without requester identity", async () => {
+    await service.submit(submission, press);
+    await waitForStatus(fake, "awaiting_review");
+    const reference = fake.requests[0]?.reference ?? "";
+    await service.approve(
+      reference,
+      { response: "Headline inflation was 3.2% in July 2026 [cpi-index#4]." },
+      staff,
+    );
+
+    const feed = await service.listOfficialResponses({ limit: 25, offset: 0 });
+    expect(feed.total).toBe(1);
+    expect(feed.responses[0]).toEqual({
+      reference,
+      claim: submission.claim,
+      response: "Headline inflation was 3.2% in July 2026 [cpi-index#4].",
+      sources: [expect.objectContaining({ chunkId: 4 })],
+      approvedAt: expect.any(String),
+    });
+    expect(feed.responses[0]).not.toHaveProperty("requesterName");
   });
 
   it("retries when a generated reference collides", async () => {
