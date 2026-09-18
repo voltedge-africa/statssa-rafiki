@@ -10,7 +10,7 @@ const meta = {
   },
   tags: ["autodocs"],
   args: {
-    placeholder: "Describe the media query and any deadlines…",
+    placeholder: "Describe the media query…",
   },
 } satisfies Meta<typeof Textarea>;
 
