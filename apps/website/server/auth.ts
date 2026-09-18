@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClient } from "@openauthjs/openauth/client";
 import type { Plugin } from "vite";
-import { subjects } from "../src/subjects.ts";
+import { subjects } from "@voltedge/auth-contract";
 
 const CLIENT_ID = "website";
 const AUTH_PORT = process.env.AUTH_PORT ?? "3001";

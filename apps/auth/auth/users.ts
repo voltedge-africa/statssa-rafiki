@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db/index.ts";
 import { users } from "./db/schema.ts";
-import { DEFAULT_ROLE, type Role } from "./roles.ts";
+import { DEFAULT_ROLE, type Role } from "@voltedge/auth-contract";
 
 // The "db" the issuer pulls a user's role from by email. Backed by Postgres via Drizzle.
 export interface User {

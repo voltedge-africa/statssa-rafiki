@@ -1,5 +1,5 @@
 import type { PasswordConfig } from "@openauthjs/openauth/provider/password";
-import { isRole, ROLES } from "./roles.ts";
+import { isRole, ROLES } from "@voltedge/auth-contract";
 import { setRole } from "./users.ts";
 
 type Register = PasswordConfig["register"];

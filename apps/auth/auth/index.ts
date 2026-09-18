@@ -7,7 +7,7 @@ import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { createTransport } from "nodemailer";
 import { withProviderList } from "./provider-list-ui.ts";
 import { withRole } from "./register-ui.ts";
-import { subjects } from "./subjects.ts";
+import { subjects } from "@voltedge/auth-contract";
 import { theme } from "./theme.ts";
 import { getUser } from "./users.ts";
 

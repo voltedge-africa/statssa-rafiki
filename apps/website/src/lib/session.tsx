@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from "react";
 
-export type Role = "Press" | "Staff" | "Admin";
+import type { Role } from "@voltedge/auth-contract";
+
+export type { Role };
 
 export type Session = {
   id: string;

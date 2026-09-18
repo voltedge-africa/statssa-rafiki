@@ -1,5 +1,5 @@
 import { pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { ROLES } from "../roles.ts";
+import { ROLES } from "@voltedge/auth-contract";
 
 export const roleEnum = pgEnum("role", ROLES);
 
