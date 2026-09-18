@@ -9,7 +9,13 @@ import { SourceReferences } from "./references.tsx";
  * An approved official response as shown in the media-room feed. The requester's
  * identity is deliberately absent — only the claim, the response and its sources.
  */
-export function OfficialResponseCard({ response }: { response: MediaOfficialResponse }) {
+export function OfficialResponseCard({
+  response,
+  onOpenSource,
+}: {
+  response: MediaOfficialResponse;
+  onOpenSource?: (source: string) => void;
+}) {
   return (
     <article className="flex flex-col overflow-hidden rounded-lg border border-border">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
@@ -33,7 +39,7 @@ export function OfficialResponseCard({ response }: { response: MediaOfficialResp
       </div>
 
       <div className="px-5 py-5">
-        <PlainMarkdown className="max-w-[68ch] text-sm leading-relaxed">
+        <PlainMarkdown className="text-sm leading-relaxed" onOpenDocument={onOpenSource}>
           {response.response}
         </PlainMarkdown>
       </div>
@@ -42,7 +48,7 @@ export function OfficialResponseCard({ response }: { response: MediaOfficialResp
         <span className="font-mono text-[11px] text-muted-foreground">
           references ({response.sources.length})
         </span>
-        <SourceReferences sources={response.sources} />
+        <SourceReferences sources={response.sources} onOpenSource={onOpenSource} />
       </div>
     </article>
   );

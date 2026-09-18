@@ -1,6 +1,7 @@
 export * from "./api.ts";
 export * from "./format.ts";
 export * from "./forms.ts";
+export { DocumentPreview } from "@voltedge/ai-chat";
 export { DraftCard } from "./components/draft-card.tsx";
 export { Fact } from "./components/fact.tsx";
 export { OfficialResponseCard } from "./components/official-response-card.tsx";

@@ -64,10 +64,7 @@ export function DraftCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <PlainMarkdown
-          className="max-w-[68ch] text-sm leading-relaxed"
-          onOpenDocument={onOpenSource}
-        >
+        <PlainMarkdown className="text-sm leading-relaxed" onOpenDocument={onOpenSource}>
           {draft.text ?? ""}
         </PlainMarkdown>
 
