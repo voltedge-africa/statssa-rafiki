@@ -21,5 +21,21 @@ services:
       timeout: 5s
       retries: 10
 
+  # Local mail catcher for development: the auth issuer sends verification codes here and you
+  # read them at http://localhost:8025. Usable when the network blocks outbound SMTP (several
+  # ISPs / managed networks do). MP_SMTP_AUTH_ACCEPT_ANY lets the issuer keep sending
+  # SMTP_USER / SMTP_PASS over the loopback connection.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: rafiki-auth-mailpit
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    # Loopback only, like Postgres: dev mail stays off the tailnet / LAN.
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI
+
 volumes:
   rafiki-auth-postgres:

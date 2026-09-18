@@ -41,10 +41,14 @@ function isAllowed(redirectURI: string, req: Request) {
 
 const smtpUser = optional("SMTP_USER");
 const smtpPass = optional("SMTP_PASS");
+const smtpPort = numberOrDefault("SMTP_PORT", 1025);
 
 const mailer = createTransport({
-  host: orDefault("SMTP_HOST", "sandbox.smtp.mailtrap.io"),
-  port: numberOrDefault("SMTP_PORT", 2525),
+  // Dev default is the local Mailpit catcher from docker-compose.yml (see apps/auth/.env.example).
+  host: orDefault("SMTP_HOST", "127.0.0.1"),
+  port: smtpPort,
+  // 465 uses implicit TLS; 2525 and 587 upgrade with STARTTLS after connecting.
+  secure: smtpPort === 465,
   auth: {
     user: smtpUser,
     pass: smtpPass,
@@ -53,6 +57,15 @@ const mailer = createTransport({
   greetingTimeout: 10_000,
   socketTimeout: 15_000,
 });
+
+if (smtpUser && smtpPass) {
+  mailer
+    .verify()
+    .then(() => console.log("[auth] SMTP connection verified"))
+    .catch((error: unknown) =>
+      console.error("[auth] SMTP verification failed; codes fall back to the console", error),
+    );
+}
 
 async function sendCode(email: string, code: string) {
   if (!smtpUser || !smtpPass) {
@@ -68,9 +81,28 @@ async function sendCode(email: string, code: string) {
       text: `Your verification code is ${code}. It expires in 10 minutes.`,
     });
 
+    if (info.rejected.length > 0) {
+      console.warn(`[auth] some recipients were rejected for ${email}:`, info.rejected);
+    }
+
     console.log(`[auth] verification code sent to ${email}: ${info.messageId}`);
   } catch (error) {
-    console.error(`[auth] could not email ${email}; falling back to console`, error);
+    const err = error as NodeJS.ErrnoException & { rejected?: unknown };
+    switch (err.code) {
+      case "ECONNECTION":
+      case "ETIMEDOUT":
+        console.error(`[auth] SMTP network error for ${email} - retry later: ${err.message}`);
+        break;
+      case "EAUTH":
+        console.error(`[auth] SMTP authentication failed for ${email}: ${err.message}`);
+        break;
+      case "EENVELOPE":
+        // err.rejected is only populated when every recipient was refused.
+        console.error(`[auth] invalid envelope for ${email}: ${err.message}`, err.rejected ?? []);
+        break;
+      default:
+        console.error(`[auth] could not email ${email}: ${err.message}`);
+    }
     console.log(`\n[auth] verification code for ${email}: ${code}\n`);
   }
 }
