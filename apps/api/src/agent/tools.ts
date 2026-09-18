@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { listFactTables, queryFactstore } from "./factstore.ts";
 import { searchStatsSa } from "./rag/tool.ts";
 import { UI_TOOLS } from "./ui/tools.ts";
 
@@ -165,4 +166,11 @@ const timeTool: AgentTool<typeof TimeParameters, { iso: string }> = {
   },
 };
 
-export const TOOLS: AgentTool<any, any>[] = [searchStatsSa, ...UI_TOOLS, calculateTool, timeTool];
+export const TOOLS: AgentTool<any, any>[] = [
+  searchStatsSa,
+  listFactTables,
+  queryFactstore,
+  ...UI_TOOLS,
+  calculateTool,
+  timeTool,
+];

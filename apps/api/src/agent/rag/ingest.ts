@@ -73,22 +73,143 @@ function splitOversized(chunk: string): string[] {
   return parts.filter(Boolean);
 }
 
-function chunkText(text: string): string[] {
-  const normalized = text.replace(/\r\n/g, "\n").trim();
-  if (!normalized) return [];
-  if (normalized.length <= CHUNK_SIZE) return [normalized];
+/** One ingest chunk: the text plus the metadata that travels with it to the LLM context. */
+export interface Chunk {
+  heading: string | null;
+  page: number | null;
+  text: string;
+}
 
-  const chunks: string[] = [];
+const PAGE_MARKER_RE = /^---[ \t]*\*Page (\d+)\*[ \t]*$/gm;
+const TWO_LINE_PAGE_RE = /^---[ \t]*\r?\n[ \t]*\*Page (\d+)\*[ \t]*$/gm;
+const HEADING_RE = /^(#{1,4})\s+(.+)$/;
+
+/**
+ * The converter emits page separators as two lines (`---` then `*Page N*`);
+ * the blueprint's single-line form (`--- *Page N*`) is also accepted. Both are
+ * normalised to the single-line form before splitting.
+ */
+function normalizePageMarkers(text: string): string {
+  return text.replace(TWO_LINE_PAGE_RE, "--- *Page $1*");
+}
+
+/** Split on the `--- *Page N*` separators, tagging each segment with its page number. */
+function splitPages(text: string): { page: number | null; text: string }[] {
+  const segments: { page: number | null; text: string }[] = [];
+  let page: number | null = null;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  PAGE_MARKER_RE.lastIndex = 0;
+  while ((match = PAGE_MARKER_RE.exec(text)) !== null) {
+    if (match.index > last) segments.push({ page, text: text.slice(last, match.index).trim() });
+    page = Number(match[1]);
+    last = match.index + match[0].length;
+  }
+  segments.push({ page, text: text.slice(last).trim() });
+  return segments.filter((segment) => segment.text.length > 0);
+}
+
+/**
+ * Split on `##` / `###` / `####` headings; each section keeps its heading.
+ * Consecutive heading lines (as produced by slide-deck converters, where every
+ * line of a page is a heading) are demoted to body text under the first
+ * heading instead of fragmenting into one-line chunks.
+ */
+function splitHeadings(text: string): { heading: string | null; body: string }[] {
+  const sections: { heading: string | null; body: string[] }[] = [];
+  let heading: string | null = null;
+  let body: string[] = [];
+  let hasBodyContent = false;
+
+  const flush = () => {
+    sections.push({ heading, body });
+    body = [];
+    heading = null;
+    hasBodyContent = false;
+  };
+
+  for (const line of text.split("\n")) {
+    const match = HEADING_RE.exec(line.trim());
+    if (match) {
+      const headingText = match[2].trim();
+      if (heading === null && !hasBodyContent) {
+        heading = headingText;
+      } else if (heading !== null && !hasBodyContent) {
+        body.push(headingText);
+      } else {
+        flush();
+        heading = headingText;
+      }
+      continue;
+    }
+    if (line.trim().length > 0) hasBodyContent = true;
+    body.push(line);
+  }
+  flush();
+  return sections
+    .map((section) => ({ heading: section.heading, body: section.body.join("\n").trim() }))
+    .filter((section) => section.heading !== null || section.body.length > 0);
+}
+
+/**
+ * Emit chunks for one heading section (within one page). Sections that fit in
+ * CHUNK_SIZE become a single chunk. Oversized sections fall back to paragraph
+ * boundaries (with overlap) inside the section; every piece keeps its heading
+ * and page marker prefix, so the metadata survives into the stored chunk text.
+ */
+function chunkSection(section: {
+  page: number | null;
+  heading: string | null;
+  body: string;
+}): Chunk[] {
+  const prefixLines = [
+    ...(section.heading === null ? [] : [`## ${section.heading}`]),
+    ...(section.page === null ? [] : [`--- *Page ${section.page}*`]),
+  ];
+  const prefix = prefixLines.join("\n");
+  const content = [prefix, section.body].filter(Boolean).join("\n\n");
+
+  if (content.length <= CHUNK_SIZE) {
+    return [{ heading: section.heading, page: section.page, text: content }];
+  }
+
+  const pieces: string[] = [];
   let current = "";
-  for (const paragraph of normalized.split(/\n{2,}/)) {
+  for (const paragraph of section.body.split(/\n{2,}/)) {
     if (current && current.length + paragraph.length + 2 > CHUNK_SIZE) {
-      chunks.push(current.trim());
+      pieces.push(current.trim());
       current = current.length > CHUNK_OVERLAP ? current.slice(-CHUNK_OVERLAP) : current;
     }
     current += (current ? "\n\n" : "") + paragraph;
   }
-  if (current.trim()) chunks.push(current.trim());
-  return chunks.flatMap(splitOversized);
+  if (current.trim()) pieces.push(current.trim());
+
+  return pieces.flatMap(splitOversized).map((piece) => ({
+    heading: section.heading,
+    page: section.page,
+    text: prefix ? `${prefix}\n\n${piece}` : piece,
+  }));
+}
+
+/**
+ * Markdown-aware chunking: page markers first, then `##` / `###` / `####`
+ * headings, then paragraph fallback for oversized sections. Every chunk carries
+ * its heading and page metadata and repeats them in the chunk text, so the LLM
+ * context always shows where a passage came from.
+ */
+function chunkText(text: string): Chunk[] {
+  const normalized = normalizePageMarkers(text.replace(/\r\n/g, "\n")).trim();
+  if (!normalized) return [];
+
+  const chunks: Chunk[] = [];
+  for (const pageSegment of splitPages(normalized)) {
+    for (const section of splitHeadings(pageSegment.text)) {
+      chunks.push(
+        ...chunkSection({ page: pageSegment.page, heading: section.heading, body: section.body }),
+      );
+    }
+  }
+  return chunks;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -169,7 +290,7 @@ async function main(): Promise<void> {
       const vectors: Float32Array[] = [];
       for (let start = 0; start < chunks.length; start += EMBED_BATCH) {
         const batch = chunks.slice(start, start + EMBED_BATCH);
-        vectors.push(...(await embedPassages(batch)));
+        vectors.push(...(await embedPassages(batch.map((chunk) => chunk.text))));
         process.stdout.write(`\r${source}: embedded ${vectors.length}/${chunks.length}`);
       }
 

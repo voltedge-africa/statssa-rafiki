@@ -10,6 +10,7 @@ import type { AuthUser } from "@voltedge/auth-contract";
 import {
   canTransition,
   extractCitationIds,
+  extractFactstoreTables,
   isTerminalStatus,
   toRequestSummary,
   type ApproveMediaRequestInput,
@@ -644,7 +645,12 @@ export class MediaService {
   private approvedSources(record: MediaRequestRecord, response: string): MediaDraftSource[] {
     const pool = record.aiSources ?? [];
     const cited = new Set(extractCitationIds(response));
-    const matched = pool.filter((source) => cited.has(source.chunkId));
+    const citedTables = new Set(extractFactstoreTables(response));
+    const matched = pool.filter(
+      (source) =>
+        (source.chunkId !== null && cited.has(source.chunkId)) ||
+        (source.table != null && citedTables.has(source.table)),
+    );
     return matched.length > 0 ? matched : pool;
   }
 

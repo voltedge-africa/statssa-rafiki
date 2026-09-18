@@ -19,11 +19,20 @@ export interface DocumentInput {
   meta?: postgres.JSONValue;
 }
 
+/** One chunk to store, with the heading/page metadata it was split on. */
+export interface ChunkInput {
+  heading: string | null;
+  page: number | null;
+  text: string;
+}
+
 export interface RagHit {
   chunkId: number;
   documentId: number;
   source: string;
   title: string | null;
+  heading: string | null;
+  page: number | null;
   text: string;
   score: number;
   similarity?: number;
@@ -64,11 +73,15 @@ export async function initSchema(db: RagDatabase): Promise<void> {
       id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       document_id integer NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
       ordinal integer NOT NULL,
+      heading text,
+      page integer,
       text text NOT NULL,
       tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple'::regconfig, text)) STORED,
       embedding vector(${dim}) NOT NULL
     );
   `);
+  await db.unsafe(`ALTER TABLE chunks ADD COLUMN IF NOT EXISTS heading text;`);
+  await db.unsafe(`ALTER TABLE chunks ADD COLUMN IF NOT EXISTS page integer;`);
   await db.unsafe(`CREATE INDEX IF NOT EXISTS chunks_document_idx ON chunks (document_id);`);
   await db.unsafe(`CREATE INDEX IF NOT EXISTS chunks_tsv_idx ON chunks USING gin (tsv);`);
   await db.unsafe(
@@ -112,7 +125,7 @@ export async function getDocument(
 export async function upsertDocument(
   db: RagDatabase,
   document: DocumentInput,
-  chunks: string[],
+  chunks: ChunkInput[],
   vectors: Float32Array[],
 ): Promise<boolean> {
   if (chunks.length !== vectors.length) {
@@ -144,10 +157,17 @@ export async function upsertDocument(
     `;
     if (!inserted) throw new Error("insert returned no document id");
 
-    for (const [ordinal, text] of chunks.entries()) {
+    for (const [ordinal, chunk] of chunks.entries()) {
       await tx`
-        INSERT INTO chunks (document_id, ordinal, text, embedding)
-        VALUES (${inserted.id}, ${ordinal}, ${text}, ${vectorLiteral(vectors[ordinal])}::vector)
+        INSERT INTO chunks (document_id, ordinal, heading, page, text, embedding)
+        VALUES (
+          ${inserted.id},
+          ${ordinal},
+          ${chunk.heading},
+          ${chunk.page},
+          ${chunk.text},
+          ${vectorLiteral(vectors[ordinal])}::vector
+        )
       `;
     }
   });
@@ -283,6 +303,8 @@ interface KeywordRow {
   documentId: number;
   source: string;
   title: string | null;
+  heading: string | null;
+  page: number | null;
   text: string;
   rank: number;
 }
@@ -292,6 +314,8 @@ interface VectorRow {
   documentId: number;
   source: string;
   title: string | null;
+  heading: string | null;
+  page: number | null;
   text: string;
   distance: number;
 }
@@ -305,7 +329,8 @@ export async function keywordSearch(
   if (!query) return [];
 
   const rows = await db<KeywordRow[]>`
-    SELECT c.id AS "chunkId", c.text AS text, d.id AS "documentId", d.source AS source,
+    SELECT c.id AS "chunkId", c.text AS text, c.heading AS heading, c.page AS page,
+           d.id AS "documentId", d.source AS source,
            d.title AS title, ts_rank_cd(c.tsv, to_tsquery('simple', ${query})) AS rank
     FROM chunks c
     JOIN documents d ON d.id = c.document_id
@@ -319,6 +344,8 @@ export async function keywordSearch(
     documentId: row.documentId,
     source: row.source,
     title: row.title,
+    heading: row.heading,
+    page: row.page,
     text: row.text,
     score: 0,
   }));
@@ -331,7 +358,8 @@ export async function vectorSearch(
   minSimilarity: number,
 ): Promise<RagHit[]> {
   const rows = await db<VectorRow[]>`
-    SELECT c.id AS "chunkId", c.text AS text, d.id AS "documentId", d.source AS source,
+    SELECT c.id AS "chunkId", c.text AS text, c.heading AS heading, c.page AS page,
+           d.id AS "documentId", d.source AS source,
            d.title AS title, c.embedding <=> ${vectorLiteral(embedding)}::vector AS distance
     FROM chunks c
     JOIN documents d ON d.id = c.document_id
@@ -345,6 +373,8 @@ export async function vectorSearch(
       documentId: row.documentId,
       source: row.source,
       title: row.title,
+      heading: row.heading,
+      page: row.page,
       text: row.text,
       score: 0,
       similarity: 1 - row.distance,

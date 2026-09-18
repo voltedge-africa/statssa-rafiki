@@ -24,9 +24,10 @@ export function SourceReferences({
   return (
     <ol className="flex flex-col gap-3">
       {sources.map((source) => {
-        const reference = `${source.source}#${source.chunkId}`;
+        const isTable = source.table != null;
+        const reference = isTable ? source.source : `${source.source}#${source.chunkId}`;
         return (
-          <li key={reference} className="flex flex-col gap-1">
+          <li key={`${reference}:${source.table ?? ""}`} className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
               {source.title ? <span className="text-sm font-medium">{source.title}</span> : null}
               <CitationChip

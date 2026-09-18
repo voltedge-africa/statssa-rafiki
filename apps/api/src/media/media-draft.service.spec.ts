@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { AgentService } from "../agent/agent.service.ts";
+import { hasFactTables } from "../agent/factstore.ts";
 import { retrieve } from "../agent/rag/retrieve.ts";
 import { MediaDraftService } from "./media-draft.service.ts";
 
 vi.mock("../agent/rag/retrieve.ts", () => ({ retrieve: vi.fn() }));
+vi.mock("../agent/factstore.ts", () => ({
+  hasFactTables: vi.fn(),
+  listFactTables: { name: "list_fact_tables" },
+  queryFactstore: { name: "query_factstore" },
+}));
 
 const retrieveMock = vi.mocked(retrieve);
+const hasFactTablesMock = vi.mocked(hasFactTables);
 
 const hits = [
   {
@@ -13,6 +20,8 @@ const hits = [
     documentId: 1,
     source: "sample/cpi-index.md",
     title: "CPI index",
+    heading: null,
+    page: null,
     text: "Headline inflation was 3.2% in July 2026.",
     score: 0.9,
   },
@@ -21,6 +30,8 @@ const hits = [
     documentId: 2,
     source: "sample/other.md",
     title: "Other release",
+    heading: null,
+    page: null,
     text: "A passage the model does not rely on.",
     score: 0.5,
   },
@@ -38,6 +49,8 @@ function makeService() {
 describe("MediaDraftService", () => {
   beforeEach(() => {
     retrieveMock.mockReset();
+    hasFactTablesMock.mockReset();
+    hasFactTablesMock.mockResolvedValue(false);
   });
 
   it("flags a gap without calling the model when no passage is relevant", async () => {
@@ -146,5 +159,27 @@ describe("MediaDraftService", () => {
 
     expect(result.text).toBeNull();
     expect(result.gap).toContain("Draft generation unavailable");
+  });
+
+  it("consults the fact store when no passage is relevant but tables are loaded", async () => {
+    retrieveMock.mockResolvedValue([]);
+    hasFactTablesMock.mockResolvedValue(true);
+    const complete = vi.fn(async (_input: { system: string; user: string }) => ({
+      text: "The rate was 4,2% [factstore:cpi].",
+      model: "test/model",
+    }));
+    const service = new MediaDraftService({ complete } as unknown as AgentService);
+
+    const result = await service.generate("What was the CPI rate?", null);
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    const input = complete.mock.calls[0]?.[0] as unknown as { tools: unknown[] };
+    expect(input.tools.map((tool) => (tool as { name: string }).name)).toEqual([
+      "list_fact_tables",
+      "query_factstore",
+    ]);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0]?.table).toBe("cpi");
+    expect(result.sources[0]?.chunkId).toBeNull();
   });
 });

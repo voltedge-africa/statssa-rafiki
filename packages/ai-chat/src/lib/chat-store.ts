@@ -235,6 +235,12 @@ export const useChatStore = create<ChatStore>()(
                   ),
                 }));
                 break;
+              case "verification":
+                updateAssistant((message) => ({
+                  ...message,
+                  verification: { status: event.status, unverified: event.unverified },
+                }));
+                break;
               case "error":
                 updateAssistant((message) => ({ ...message, error: event.message }));
                 set({ status: "error" });
