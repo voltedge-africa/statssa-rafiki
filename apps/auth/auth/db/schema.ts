@@ -1,4 +1,18 @@
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgEnum,
+  pgTable,
+  pgView,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { eq } from "drizzle-orm";
 import {
   MEDIA_EVENT_KINDS,
   MEDIA_EVENT_VISIBILITIES,
@@ -150,3 +164,122 @@ export const mediaRequestEvents = pgTable(
 
 export type MediaRequestEventRow = typeof mediaRequestEvents.$inferSelect;
 export type NewMediaRequestEventRow = typeof mediaRequestEvents.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// AI telemetry (model governance)
+//
+// Written by apps/api from pi telemetry spans. Holds only what the model did,
+// which tools it used and how the call performed: never prompts, completions,
+// tool arguments or tool output. See apps/api/src/agent/telemetry.flatten.ts.
+// ---------------------------------------------------------------------------
+
+export const aiSpans = pgTable(
+  "ai_spans",
+  {
+    id: bigint("id", { mode: "number" }).generatedAlwaysAsIdentity().primaryKey(),
+    spanUid: uuid("span_uid").notNull().defaultRandom().unique(),
+    parentUid: uuid("parent_uid"),
+    sessionId: text("session_id"),
+    name: text("name").notNull(),
+    /** turn | model_request | tool | other */
+    kind: text("kind").notNull().default("other"),
+    feature: text("feature"),
+    clientRole: text("client_role"),
+    clientOrigin: text("client_origin"),
+    provider: text("provider"),
+    model: text("model"),
+    responseModel: text("response_model"),
+    operation: text("operation"),
+    toolName: text("tool_name"),
+    toolCallId: text("tool_call_id"),
+    toolIsError: boolean("tool_is_error"),
+    stopReason: text("stop_reason"),
+    status: text("status").notNull().default("ok"),
+    errorMessage: text("error_message"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    cacheReadTokens: integer("cache_read_tokens"),
+    cacheWriteTokens: integer("cache_write_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    totalTokens: integer("total_tokens"),
+    costUsd: numeric("cost_usd", { precision: 14, scale: 6 }),
+    chunkCount: integer("chunk_count"),
+    timeToFirstChunkMs: integer("time_to_first_chunk_ms"),
+    durationMs: integer("duration_ms"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    attributes: jsonb("attributes").notNull().default({}),
+    events: jsonb("events").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_spans_session_idx").on(table.sessionId, table.startedAt),
+    index("ai_spans_kind_idx").on(table.kind, table.startedAt),
+    index("ai_spans_name_idx").on(table.name),
+    index("ai_spans_model_idx").on(table.model, table.startedAt),
+    index("ai_spans_tool_idx").on(table.toolName, table.startedAt),
+    index("ai_spans_feature_idx").on(table.feature, table.startedAt),
+    index("ai_spans_role_idx").on(table.clientRole, table.startedAt),
+    index("ai_spans_status_idx").on(table.status),
+    index("ai_spans_created_idx").on(table.createdAt),
+  ],
+);
+
+export type AiSpanRow = typeof aiSpans.$inferSelect;
+export type NewAiSpanRow = typeof aiSpans.$inferInsert;
+
+/** Per-model-call governance view (`kind = 'model_request'`). */
+export const aiModelUsage = pgView("ai_model_usage").as((qb) =>
+  qb
+    .select({
+      spanUid: aiSpans.spanUid,
+      parentUid: aiSpans.parentUid,
+      sessionId: aiSpans.sessionId,
+      feature: aiSpans.feature,
+      clientRole: aiSpans.clientRole,
+      clientOrigin: aiSpans.clientOrigin,
+      provider: aiSpans.provider,
+      model: aiSpans.model,
+      responseModel: aiSpans.responseModel,
+      operation: aiSpans.operation,
+      stopReason: aiSpans.stopReason,
+      status: aiSpans.status,
+      errorMessage: aiSpans.errorMessage,
+      inputTokens: aiSpans.inputTokens,
+      outputTokens: aiSpans.outputTokens,
+      cacheReadTokens: aiSpans.cacheReadTokens,
+      cacheWriteTokens: aiSpans.cacheWriteTokens,
+      reasoningTokens: aiSpans.reasoningTokens,
+      totalTokens: aiSpans.totalTokens,
+      costUsd: aiSpans.costUsd,
+      chunkCount: aiSpans.chunkCount,
+      timeToFirstChunkMs: aiSpans.timeToFirstChunkMs,
+      durationMs: aiSpans.durationMs,
+      startedAt: aiSpans.startedAt,
+      endedAt: aiSpans.endedAt,
+    })
+    .from(aiSpans)
+    .where(eq(aiSpans.kind, "model_request")),
+);
+
+/** Per-tool-call governance view (`kind = 'tool'`). */
+export const aiToolUsage = pgView("ai_tool_usage").as((qb) =>
+  qb
+    .select({
+      spanUid: aiSpans.spanUid,
+      parentUid: aiSpans.parentUid,
+      sessionId: aiSpans.sessionId,
+      feature: aiSpans.feature,
+      clientRole: aiSpans.clientRole,
+      toolName: aiSpans.toolName,
+      toolCallId: aiSpans.toolCallId,
+      toolIsError: aiSpans.toolIsError,
+      status: aiSpans.status,
+      errorMessage: aiSpans.errorMessage,
+      durationMs: aiSpans.durationMs,
+      startedAt: aiSpans.startedAt,
+      endedAt: aiSpans.endedAt,
+    })
+    .from(aiSpans)
+    .where(eq(aiSpans.kind, "tool")),
+);
