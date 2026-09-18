@@ -50,6 +50,7 @@ import {
   updateMediaRequest,
 } from "@voltedge/media-ui";
 
+import { SourcePreview } from "../components/source-preview.tsx";
 import { signInUrl, useSession } from "../lib/session.tsx";
 
 const SELECT_CLASS =
@@ -80,7 +81,7 @@ function Select({
 export function MediaQueueView() {
   const { session, loading } = useSession();
 
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<MediaRequestStatus | "">("");
   const [assigned, setAssigned] = useState("");
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
@@ -101,13 +102,14 @@ export function MediaQueueView() {
   const [rejectReason, setRejectReason] = useState("");
   const [caseNote, setCaseNote] = useState("");
   const [visibility, setVisibility] = useState<MediaEventVisibility>("internal");
+  const [previewSource, setPreviewSource] = useState<string | null>(null);
 
   const staff = Boolean(session && session.role !== "Press");
 
   const loadList = useCallback(async () => {
     setListError(null);
     try {
-      const result = await listMediaRequests({ status, assigned, q: query });
+      const result = await listMediaRequests({ status: status || undefined, assigned, q: query });
       setList(result.requests);
       setTotal(result.total);
     } catch (caught) {
@@ -293,7 +295,10 @@ export function MediaQueueView() {
           </form>
 
           <div className="grid grid-cols-2 gap-2">
-            <Select value={status} onChange={(event) => setStatus(event.target.value)}>
+            <Select
+              value={status}
+              onChange={(event) => setStatus(event.target.value as MediaRequestStatus | "")}
+            >
               <option value="">Any status</option>
               {MEDIA_REQUEST_STATUSES.map((value) => (
                 <option key={value} value={value}>
@@ -392,6 +397,7 @@ export function MediaQueueView() {
                 email={detail.requesterEmail}
                 assignedToEmail={detail.assignedToEmail}
                 draft={detail.draft}
+                onOpenSource={setPreviewSource}
               />
 
               {isTerminalStatus(detail.status) ? null : (
@@ -606,6 +612,14 @@ export function MediaQueueView() {
           ) : null}
         </div>
       </div>
+
+      <SourcePreview
+        source={previewSource}
+        open={previewSource !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewSource(null);
+        }}
+      />
     </section>
   );
 }

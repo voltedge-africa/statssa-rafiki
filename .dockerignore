@@ -1,0 +1,25 @@
+# Keep the build context lean; dependencies are installed inside the image.
+.git
+.github
+.vscode
+.cursor
+.claude
+.vite-hooks
+
+node_modules
+**/node_modules
+
+# Built fresh inside the image (or served from volumes)
+dist
+**/dist
+models
+**/models
+**/coverage
+
+# Secrets and local state
+.env
+**/.env
+**/.env.local
+**/.openauth-persist.json
+
+*.log

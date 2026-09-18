@@ -1,10 +1,18 @@
 import type { MediaDraftSource } from "@voltedge/media-contract";
+import { CitationChip } from "@voltedge/ui";
 
 /**
  * The approved sources behind an AI draft or an approved response, rendered as a
- * reference list so a reader can verify each factual claim.
+ * reference list so a reader can verify each factual claim. Each reference carries the
+ * same citation chip used in the public chat answers.
  */
-export function SourceReferences({ sources }: { sources: MediaDraftSource[] }) {
+export function SourceReferences({
+  sources,
+  onOpenSource,
+}: {
+  sources: MediaDraftSource[];
+  onOpenSource?: (source: string) => void;
+}) {
   if (sources.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -15,19 +23,24 @@ export function SourceReferences({ sources }: { sources: MediaDraftSource[] }) {
 
   return (
     <ol className="flex flex-col gap-3">
-      {sources.map((source) => (
-        <li key={`${source.source}#${source.chunkId}`} className="flex flex-col gap-1">
-          <span className="text-sm font-medium">
-            {source.title ?? source.source}{" "}
-            <span className="font-mono text-[11px] font-normal text-muted-foreground">
-              [{source.source}#{source.chunkId}]
-            </span>
-          </span>
-          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-            {source.snippet}
-          </p>
-        </li>
-      ))}
+      {sources.map((source) => {
+        const reference = `${source.source}#${source.chunkId}`;
+        return (
+          <li key={reference} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              {source.title ? <span className="text-sm font-medium">{source.title}</span> : null}
+              <CitationChip
+                label={reference}
+                title={`Open ${source.source}`}
+                onClick={onOpenSource ? () => onOpenSource(source.source) : undefined}
+              />
+            </div>
+            <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+              {source.snippet}
+            </p>
+          </li>
+        );
+      })}
     </ol>
   );
 }

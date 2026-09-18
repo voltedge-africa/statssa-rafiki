@@ -11,8 +11,13 @@ const CHALLENGE_COOKIE = "control_challenge";
 
 // Browser calls to these prefixes are proxied to the API with the session's access token
 // attached, so tokens stay in httpOnly cookies and the browser never talks to the API
-// cross-origin. `/api/popia` carries the POPIA desk and `/api/media` the media desk.
-const API_PREFIXES = ["/api/popia", "/api/media"] as const;
+// cross-origin. `/api/popia` carries the POPIA desk, `/api/media` the media desk and
+// `/api/rag` the indexed documents a fact-check reference opens.
+const API_PREFIXES: Record<string, string> = {
+  "/api/popia": "/popia",
+  "/api/media": "/media",
+  "/api/rag": "/api/rag",
+};
 
 const ACCESS_MAX_AGE = 60 * 60 * 24 * 30;
 const REFRESH_MAX_AGE = 60 * 60 * 24 * 365;
@@ -148,16 +153,22 @@ async function proxy(
   res: ServerResponse,
   env: ServerEnv,
   prefix: string,
+  upstreamPrefix: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", requestOrigin(req));
   const suffix = url.pathname.slice(prefix.length) || "/";
-  const target = `${env.apiBase}${prefix.slice("/api".length)}${suffix}${url.search}`;
+  const target = `${env.apiBase}${upstreamPrefix}${suffix}${url.search}`;
 
   const session = await resolveSession(req, env, res);
   const headers: Record<string, string> = {};
   const contentType = req.headers["content-type"];
   if (contentType) headers["content-type"] = contentType;
   if (session) headers.authorization = `Bearer ${session.token}`;
+  // The API derives the auth issuer from the hostname the browser used, the same way it
+  // does for direct browser calls (see apps/api/src/auth/issuer.ts). Without this header it
+  // would reconstruct the issuer from the proxy target host, which mismatches the token's
+  // iss claim when the app runs behind a proxy or in containers.
+  if (req.headers.host) headers["x-forwarded-host"] = req.headers.host;
 
   try {
     const upstream = await fetch(target, {
@@ -177,9 +188,9 @@ async function proxy(
 async function handle(env: ServerEnv, req: IncomingMessage, res: ServerResponse, next: () => void) {
   const path = (req.url ? new URL(req.url, requestOrigin(req)).pathname : "") || "";
 
-  const apiPrefix = API_PREFIXES.find((prefix) => path.startsWith(prefix));
+  const apiPrefix = Object.keys(API_PREFIXES).find((prefix) => path.startsWith(prefix));
   if (apiPrefix) {
-    await proxy(req, res, env, apiPrefix);
+    await proxy(req, res, env, apiPrefix, API_PREFIXES[apiPrefix]);
     return;
   }
 

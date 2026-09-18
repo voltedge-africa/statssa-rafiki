@@ -21,9 +21,17 @@
     "db:down": "vp run auth#db:down",
     "db:generate": "vp run auth#db:generate",
     "db:migrate": "vp run auth#db:migrate",
+    "db:seed": "vp run auth#db:seed",
     "db:push": "vp run auth#db:push",
     "rag:model": "vp run api#rag:model",
     "rag:ingest": "vp run api#rag:ingest",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f --tail=100",
+    "docker:ps": "docker compose ps",
+    "docker:rag": "docker compose run --rm rag-init",
+    "docker:reset": "docker compose down -v",
     "prepare": "vp config"
   },
   "devDependencies": {

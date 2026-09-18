@@ -1,25 +1,29 @@
 import { useMemo } from "react";
-import { MessageResponse } from "./ai-elements/message.tsx";
+import { Streamdown } from "streamdown";
+import "streamdown/styles.css";
 import { linkifyCitations } from "../lib/citations.ts";
 import { useMarkdownComponents } from "./markdown-anchor.tsx";
 
-export function Markdown({
+/**
+ * Markdown with citation chips but none of the chat surface's heavy plugins (code
+ * highlighting, maths, diagrams). Used where a grounded answer is read rather than
+ * streamed, e.g. the media review draft and approved response.
+ */
+export function PlainMarkdown({
   children,
   onOpenDocument,
-  isAnimating,
   className,
 }: {
   children: string;
   onOpenDocument?: (source: string) => void;
-  isAnimating?: boolean;
   className?: string;
 }) {
   const components = useMarkdownComponents(onOpenDocument);
   const content = useMemo(() => linkifyCitations(children), [children]);
 
   return (
-    <MessageResponse className={className} isAnimating={isAnimating} components={components}>
+    <Streamdown className={className} components={components}>
       {content}
-    </MessageResponse>
+    </Streamdown>
   );
 }

@@ -1,0 +1,273 @@
+# Full-stack development compose for statssa-rafiki.
+#
+#   docker compose up -d --build     # or: vp run docker:up
+#
+# Every service runs on the host network. That is deliberate: the OAuth
+# middleware in the front-ends derives the issuer URL from the browser's
+# request host (http://localhost:3000) and performs server-side token
+# exchanges against that same URL, so the issuer must be reachable from both
+# the browser and the service containers under one name. Host networking keeps
+# every URL identical to native development — no app code or env juggling.
+# Consequence: the stack occupies ports 3000-3006, 5432 and 8025 directly on
+# the host, so stop any natively-running dev servers first. Postgres and
+# Mailpit listen on 127.0.0.1 only (DB and dev mail stay off the LAN/tailnet),
+# matching apps/auth/docker-compose.yml.
+
+name: rafiki
+
+services:
+  # pgvector build of Postgres 17: `rafiki_auth` holds users, POPIA and media
+  # tables; `rafiki_rag` holds the vector index (needs the pgvector extension).
+  postgres:
+    image: pgvector/pgvector:pg17
+    network_mode: host
+    restart: unless-stopped
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
+    environment:
+      POSTGRES_USER: rafiki
+      POSTGRES_PASSWORD: rafiki
+      POSTGRES_DB: rafiki_auth
+    volumes:
+      - rafiki-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rafiki -d rafiki_auth -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Dev mail catcher: verification codes land at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    network_mode: host
+    restart: unless-stopped
+    command: ["--smtp", "127.0.0.1:1025", "--listen", "127.0.0.1:8025"]
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  # One-shot: apply the committed Drizzle migrations (users, role enum, POPIA
+  # and media tables) before the auth issuer starts.
+  migrate:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: "no"
+    working_dir: /app/apps/auth
+    command: ["./node_modules/.bin/drizzle-kit", "migrate"]
+    environment:
+      DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # One-shot: cache the embedding model (the only step that touches the
+  # network) and index apps/api/corpus into rafiki_rag. Re-runs are cheap —
+  # documents are keyed by content hash, so unchanged ones are skipped. If it
+  # fails (e.g. offline), re-run it with `docker compose run --rm rag-init`;
+  # the API still boots and degrades to information-gap answers meanwhile.
+  rag-init:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: "no"
+    working_dir: /app/apps/api
+    command: ["/bin/sh", "-c", "node src/agent/rag/fetch-model.ts && node src/agent/rag/ingest.ts"]
+    environment:
+      RAG_DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_rag
+      RAG_MODELS_DIR: /app/apps/api/models
+    volumes:
+      - rafiki-rag-models:/app/apps/api/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # OpenAuth issuer on http://localhost:3000 (Bun).
+  auth:
+    build:
+      context: .
+      target: auth
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      AUTH_PORT: "3000"
+      DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "1025"
+      SMTP_USER: rafiki
+      SMTP_PASS: rafiki
+      SMTP_FROM: "Stats SA Rafiki <no-reply@statssa.gov.za>"
+    volumes:
+      - rafiki-auth-openauth:/app/apps/auth/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(() => process.exit(0)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # NestJS API on http://localhost:3001.
+  api:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: unless-stopped
+    working_dir: /app/apps/api
+    command: ["node", "dist/main.js"]
+    environment:
+      NODE_ENV: development
+      API_PORT: "3001"
+      AUTH_PORT: "3000"
+      DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth
+      RAG_DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_rag
+      RAG_MODELS_DIR: /app/apps/api/models
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+    volumes:
+      - rafiki-rag-models:/app/apps/api/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rag-init:
+        condition: service_completed_successfully
+        required: false
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # Website + POPIA desk on http://localhost:3002 (vite preview serves the
+  # built SPA plus the OAuth/proxy middleware plugins).
+  website:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: unless-stopped
+    working_dir: /app/apps/website
+    command: ["./node_modules/.bin/vp", "preview"]
+    environment:
+      AUTH_PORT: "3000"
+      VITE_API_BASE: http://127.0.0.1:3001
+    depends_on:
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # Public chat portal on http://localhost:3003 (static SPA; the browser talks
+  # to the API directly at the baked-in default http://localhost:3001).
+  public-portal:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: unless-stopped
+    working_dir: /app/apps/public-portal
+    command: ["./node_modules/.bin/vp", "preview"]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3003/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # Media room on http://localhost:3004.
+  media-portal:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: unless-stopped
+    working_dir: /app/apps/media-portal
+    command: ["./node_modules/.bin/vp", "preview"]
+    environment:
+      AUTH_PORT: "3000"
+      VITE_API_BASE: http://127.0.0.1:3001
+    depends_on:
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3004/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # Staff/Admin workspace on http://localhost:3006.
+  control-centre:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: unless-stopped
+    working_dir: /app/apps/control-centre
+    command: ["./node_modules/.bin/vp", "preview"]
+    environment:
+      AUTH_PORT: "3000"
+      VITE_API_BASE: http://127.0.0.1:3001
+    depends_on:
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3006/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  rafiki-postgres:
+  rafiki-auth-openauth:
+  rafiki-rag-models:

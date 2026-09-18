@@ -129,6 +129,57 @@ room lives at <http://localhost:3004>.
 > Verification codes arrive in Mailpit at <http://localhost:8025> (started by `vp run db:up`). If
 > SMTP is unconfigured, they are printed to the auth server's terminal instead.
 
+---
+
+## Docker
+
+The whole stack can run in Docker instead of six terminals. `docker-compose.yml` at the repo root
+starts Postgres (pgvector), Mailpit, the auth issuer (Bun), the NestJS API, all four front-ends
+(`vp preview` with their OAuth middleware), applies the Drizzle migrations and seeds the RAG
+index — in dependency order, with healthchecks. If OpenCode chat is needed, export
+`OPENCODE_API_KEY` before starting.
+
+```bash
+docker compose up -d --build   # or: vp run docker:up
+docker compose ps              # wait for everything to report healthy
+docker compose logs -f api     # or: vp run docker:logs
+docker compose down            # or: vp run docker:down (keeps data)
+docker compose down -v         # or: vp run docker:reset (wipes DB, RAG index, auth keys)
+docker compose run --rm rag-init   # or: vp run docker:rag (re-index the corpus)
+```
+
+Once everything is healthy, use the same URLs as native development: website
+<http://localhost:3002>, public portal <http://localhost:3003>, media room
+<http://localhost:3004>, control centre <http://localhost:3006>, API <http://localhost:3001>,
+issuer <http://localhost:3000> and Mailpit <http://localhost:8025>.
+
+How it fits together:
+
+- **Images** — a single multi-stage [`Dockerfile`](Dockerfile). The `runtime` target (node:24)
+  carries the installed and built workspace and serves the API (`node dist/main.js`), the
+  front-ends (`vp preview`) and the one-shot jobs. The `auth` target (oven/bun) carries only the
+  auth issuer's slice and runs its TypeScript sources directly. Dependency manifests are copied
+  separately so `pnpm install` stays cached while sources change.
+- **Host networking** — every service uses `network_mode: host`. The OAuth middleware in the
+  front-ends derives the issuer URL from the hostname the browser used and performs server-side
+  token exchanges against it, so the issuer must resolve the same way inside and outside the
+  containers. Host networking keeps every URL identical to native development. The trade-off: the
+  stack occupies ports 3000–3006, 5432, 1025 and 8025 on the host, so stop the native dev stack
+  (`vp run dev:all`, `vp run db:up`) before `docker compose up`. Postgres and Mailpit listen on
+  `127.0.0.1` only — the DB and dev mail stay off the LAN/tailnet, same as native dev.
+- **One-shot jobs** — `migrate` (drizzle-kit) runs before the issuer starts; `rag-init` caches
+  the embedding model and indexes `apps/api/corpus` into `rafiki_rag`. Both are idempotent, and
+  the API does not block on `rag-init`: if the model download fails (offline first run), the API
+  still boots and degrades to information-gap answers until `vp run docker:rag` succeeds.
+- **State** — named volumes keep Postgres data, the auth issuer's accounts/signing keys
+  (`.openauth-persist.json`) and the cached embedding model across restarts.
+
+The middleware proxies now forward `X-Forwarded-Host`, which lets the API derive the issuer the
+same way it does for direct browser calls — required for the token's `iss` claim to verify when
+the proxy target host differs from the browser's host (containers, any reverse proxy).
+
+---
+
 ### Port allocation
 
 Ports are fixed (`strictPort`) and allocated from 3000. A taken port fails that server instead of

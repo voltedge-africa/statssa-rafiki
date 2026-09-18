@@ -6,6 +6,7 @@ export { TelemetryPanel, type TelemetryPanelProps } from "./components/telemetry
 export { DocumentPreview } from "./components/document-preview.tsx";
 export { ToolRunView } from "./components/tool-run.tsx";
 export { Markdown } from "./components/markdown.tsx";
+export { PlainMarkdown } from "./components/plain-markdown.tsx";
 
 export {
   Conversation,

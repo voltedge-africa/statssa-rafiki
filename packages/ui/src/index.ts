@@ -48,6 +48,7 @@ export {
   CardHeader,
   CardTitle,
 } from "./components/ui/card.tsx";
+export { CitationChip } from "./components/citation.tsx";
 export {
   Collapsible,
   CollapsibleContent,

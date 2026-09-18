@@ -1,3 +1,4 @@
+import { PlainMarkdown } from "@voltedge/ai-chat/components/plain-markdown";
 import type {
   MediaAiDraft,
   MediaRequestEventView,
@@ -19,9 +20,18 @@ export type RequestFileProps = {
   email?: string | null;
   assignedToEmail?: string | null;
   draft?: MediaAiDraft | null;
+  /** When set, every citation chip opens its source through this handler. */
+  onOpenSource?: (source: string) => void;
 };
 
-export function RequestFile({ request, events, email, assignedToEmail, draft }: RequestFileProps) {
+export function RequestFile({
+  request,
+  events,
+  email,
+  assignedToEmail,
+  draft,
+  onOpenSource,
+}: RequestFileProps) {
   return (
     <article className="flex flex-col overflow-hidden rounded-lg border border-border">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
@@ -74,7 +84,7 @@ export function RequestFile({ request, events, email, assignedToEmail, draft }: 
 
       {draft ? (
         <div className="border-t border-border px-5 py-5">
-          <DraftCard draft={draft} />
+          <DraftCard draft={draft} onOpenSource={onOpenSource} />
         </div>
       ) : null}
 
@@ -89,14 +99,17 @@ export function RequestFile({ request, events, email, assignedToEmail, draft }: 
               reviewed by Stats SA
             </Badge>
           </div>
-          <p className="max-w-[68ch] text-sm leading-relaxed whitespace-pre-wrap">
+          <PlainMarkdown
+            className="max-w-[68ch] text-sm leading-relaxed"
+            onOpenDocument={onOpenSource}
+          >
             {request.approvedResponse}
-          </p>
+          </PlainMarkdown>
           <div className="flex flex-col gap-3 border-t border-border pt-4">
             <span className="font-mono text-[11px] text-muted-foreground">
               references ({request.approvedSources.length})
             </span>
-            <SourceReferences sources={request.approvedSources} />
+            <SourceReferences sources={request.approvedSources} onOpenSource={onOpenSource} />
           </div>
         </div>
       ) : null}

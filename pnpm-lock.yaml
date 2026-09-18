@@ -747,6 +747,9 @@ importers:
 
   packages/media-ui:
     dependencies:
+      '@voltedge/ai-chat':
+        specifier: workspace:*
+        version: link:../ai-chat
       '@voltedge/media-contract':
         specifier: workspace:*
         version: link:../media-contract

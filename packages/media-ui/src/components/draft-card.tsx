@@ -1,3 +1,4 @@
+import { PlainMarkdown } from "@voltedge/ai-chat/components/plain-markdown";
 import type { MediaAiDraft } from "@voltedge/media-contract";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@voltedge/ui";
 
@@ -8,7 +9,13 @@ import { SourceReferences } from "./references.tsx";
  * The AI-generated draft, shown only in the review workspace. It is always
  * labelled as unreviewed so it can never be mistaken for an official answer.
  */
-export function DraftCard({ draft }: { draft: MediaAiDraft }) {
+export function DraftCard({
+  draft,
+  onOpenSource,
+}: {
+  draft: MediaAiDraft;
+  onOpenSource?: (source: string) => void;
+}) {
   if (draft.gap) {
     return (
       <Card className="border-orange-500/40">
@@ -57,13 +64,18 @@ export function DraftCard({ draft }: { draft: MediaAiDraft }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <p className="max-w-[68ch] text-sm leading-relaxed whitespace-pre-wrap">{draft.text}</p>
+        <PlainMarkdown
+          className="max-w-[68ch] text-sm leading-relaxed"
+          onOpenDocument={onOpenSource}
+        >
+          {draft.text ?? ""}
+        </PlainMarkdown>
 
         <div className="flex flex-col gap-3 border-t border-border pt-4">
           <span className="font-mono text-[11px] text-muted-foreground">
             sources ({draft.sources.length})
           </span>
-          <SourceReferences sources={draft.sources} />
+          <SourceReferences sources={draft.sources} onOpenSource={onOpenSource} />
         </div>
       </CardContent>
     </Card>

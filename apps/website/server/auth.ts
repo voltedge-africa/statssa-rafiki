@@ -264,6 +264,11 @@ async function proxy(req: IncomingMessage, res: ServerResponse, env: ServerEnv):
   const contentType = req.headers["content-type"];
   if (contentType) headers["content-type"] = contentType;
   if (session) headers.authorization = `Bearer ${session.token}`;
+  // The API derives the auth issuer from the hostname the browser used, the same way it
+  // does for direct browser calls (see apps/api/src/auth/issuer.ts). Without this header it
+  // would reconstruct the issuer from the proxy target host, which mismatches the token's
+  // iss claim when the app runs behind a proxy or in containers.
+  if (req.headers.host) headers["x-forwarded-host"] = req.headers.host;
 
   try {
     const upstream = await fetch(target, {
