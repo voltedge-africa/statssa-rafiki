@@ -1,8 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post, Res } from "@nestjs/common";
-import type { Response } from "express";
+import { Body, Controller, Get, HttpCode, Post, Req, Res } from "@nestjs/common";
+import type { Request, Response } from "express";
+import type { AuthUser } from "@voltedge/auth-contract";
 import type { ChatEvent, ChatRequest } from "@voltedge/agent-contract";
+import { CurrentUser } from "../auth/current-user.decorator.ts";
+import { OptionalAuth } from "../auth/optional-auth.decorator.ts";
 import { Public } from "../auth/public.decorator.ts";
-import { AgentService } from "./agent.service.ts";
+import { AgentService, type TelemetryOrigin } from "./agent.service.ts";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream; charset=utf-8",
@@ -11,18 +14,35 @@ const SSE_HEADERS = {
   "X-Accel-Buffering": "no",
 } as const;
 
+/** Best-effort, non-personal portal host from the request headers. */
+function requestOrigin(req: Request): string | undefined {
+  const source = req.headers.origin ?? req.headers.referer;
+  if (typeof source !== "string") return undefined;
+  try {
+    return new URL(source).host;
+  } catch {
+    return undefined;
+  }
+}
+
 @Controller("api")
-@Public()
 export class AgentController {
   constructor(private readonly agent: AgentService) {}
 
   @Get("status")
+  @Public()
   status() {
     return this.agent.providerStatus();
   }
 
   @Post("chat")
-  async chat(@Body() body: Partial<ChatRequest> | undefined, @Res() res: Response): Promise<void> {
+  @OptionalAuth()
+  async chat(
+    @Body() body: Partial<ChatRequest> | undefined,
+    @Req() req: Request,
+    @CurrentUser() user: AuthUser | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
     if (!body?.sessionId || typeof body.sessionId !== "string") {
       res.status(400).json({ error: "sessionId is required" });
       return;
@@ -42,8 +62,15 @@ export class AgentController {
       if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
+    const host = requestOrigin(req);
+    const origin: TelemetryOrigin = {
+      feature: "chat",
+      clientRole: user?.role ?? "anonymous",
+      ...(host ? { clientOrigin: host } : {}),
+    };
+
     try {
-      await this.agent.runChat({ sessionId: body.sessionId, message: body.message }, send);
+      await this.agent.runChat({ sessionId: body.sessionId, message: body.message }, send, origin);
     } catch (error) {
       send({ type: "error", message: error instanceof Error ? error.message : String(error) });
       send({ type: "done" });
@@ -54,6 +81,7 @@ export class AgentController {
   }
 
   @Post("reset")
+  @Public()
   @HttpCode(200)
   reset(@Body() body: { sessionId?: string } | undefined) {
     return { cleared: body?.sessionId ? this.agent.resetSession(body.sessionId) : false };

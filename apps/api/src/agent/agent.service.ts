@@ -3,6 +3,7 @@ import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { Agent, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
 import { createModels, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go";
+import type { SpanAttributes } from "@earendil-works/pi-telemetry";
 import type { AgentStatus, ChatEvent, ChatRequest } from "@voltedge/agent-contract";
 import { hasProviderKey, MODEL, PROVIDER } from "./config.ts";
 import { guardedFetch } from "./offline.ts";
@@ -41,6 +42,52 @@ function toolSummary(result: unknown): string {
 
 function stopReasonAttr(reason: string): string {
   return reason === "toolUse" ? "tool_use" : reason;
+}
+
+/**
+ * Where an AI call came from: the feature that triggered it and the portal/role
+ * that reached the API. Deliberately excludes user identity (POPIA): governance
+ * sees "an Admin used chat", never which Admin.
+ */
+export interface TelemetryOrigin {
+  feature: string;
+  clientRole?: string;
+  clientOrigin?: string;
+}
+
+function originAttributes(origin: TelemetryOrigin | undefined): SpanAttributes {
+  if (!origin) return {};
+  return {
+    "rafiki.feature": origin.feature,
+    ...(origin.clientRole ? { "rafiki.client.role": origin.clientRole } : {}),
+    ...(origin.clientOrigin ? { "rafiki.client.origin": origin.clientOrigin } : {}),
+  };
+}
+
+interface AssistantStats {
+  startedAt: number;
+  chunkCount: number;
+  firstChunkAt?: number;
+}
+
+function usageAttributes(message: AssistantMessage, stats: AssistantStats): SpanAttributes {
+  const usage = message.usage;
+  return {
+    "pi.ai.response.model": message.responseModel ?? message.model,
+    ...(message.responseId ? { "pi.ai.response.id": message.responseId } : {}),
+    "pi.ai.response.stop_reason": stopReasonAttr(message.stopReason),
+    "pi.ai.usage.input_tokens": usage.input,
+    "pi.ai.usage.output_tokens": usage.output,
+    "pi.ai.usage.cache_read_tokens": usage.cacheRead,
+    "pi.ai.usage.cache_write_tokens": usage.cacheWrite,
+    ...(usage.reasoning === undefined ? {} : { "pi.ai.usage.reasoning_tokens": usage.reasoning }),
+    "pi.ai.usage.total_tokens": usage.totalTokens,
+    "pi.ai.usage.cost": usage.cost.total,
+    "pi.ai.stream.chunk_count": stats.chunkCount,
+    ...(stats.firstChunkAt === undefined
+      ? {}
+      : { "pi.ai.stream.time_to_first_chunk_ms": stats.firstChunkAt - stats.startedAt }),
+  };
 }
 
 /**
@@ -109,8 +156,11 @@ export class AgentService implements OnModuleInit {
    * only need the model to turn supplied passages into prose. Returns the text,
    * the model that produced it, and any provider error instead of throwing, so
    * callers can surface an information gap rather than a 500.
+   *
+   * Emits the same `rafiki.turn` + `pi.ai.request` telemetry as chat so
+   * governance sees every model call, regardless of feature.
    */
-  async complete(input: { system: string; user: string }): Promise<{
+  async complete(input: { system: string; user: string; feature?: string }): Promise<{
     text: string;
     model: string;
     error?: string;
@@ -144,11 +194,71 @@ export class AgentService implements OnModuleInit {
         }),
     });
 
+    const turnSpan = this.telemetry.begin("rafiki.completion", {
+      "session.id": sessionId,
+      "rafiki.feature": input.feature ?? "completion",
+    });
+
+    let assistantSpan: SpanHandle | undefined;
+    let assistantStartedAt = 0;
+    let chunkCount = 0;
+    let firstChunkAt: number | undefined;
     let text = "";
     let failure: string | undefined;
+
     const unsubscribe = agent.subscribe((event) => {
-      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-        text += event.assistantMessageEvent.delta;
+      if (event.type === "message_start" && event.message.role === "assistant") {
+        const message = event.message as AssistantMessage;
+        assistantStartedAt = Date.now();
+        chunkCount = 0;
+        firstChunkAt = undefined;
+        assistantSpan = this.telemetry.begin(
+          "pi.ai.request",
+          {
+            "pi.ai.operation": "stream",
+            "pi.ai.provider": message.provider,
+            "pi.ai.model": message.model,
+            "pi.ai.api": message.api,
+            "pi.ai.streaming": true,
+            "session.id": sessionId,
+            "rafiki.feature": input.feature ?? "completion",
+          },
+          turnSpan.id,
+        );
+        return;
+      }
+
+      if (event.type === "message_update") {
+        const update = event.assistantMessageEvent;
+        if (
+          update.type === "text_delta" ||
+          update.type === "thinking_delta" ||
+          update.type === "toolcall_delta"
+        ) {
+          chunkCount += 1;
+          firstChunkAt ??= Date.now();
+        }
+        if (update.type === "text_delta") text += update.delta;
+        return;
+      }
+
+      if (event.type === "message_end" && event.message.role === "assistant" && assistantSpan) {
+        const message = event.message as AssistantMessage;
+        assistantSpan.setAttributes(
+          usageAttributes(message, { startedAt: assistantStartedAt, chunkCount, firstChunkAt }),
+        );
+        if (message.stopReason === "error" || message.stopReason === "aborted") {
+          assistantSpan.end({
+            status: "error",
+            error: {
+              name: message.stopReason,
+              message: message.errorMessage ?? "Request did not complete",
+            },
+          });
+        } else {
+          assistantSpan.end();
+        }
+        assistantSpan = undefined;
       }
     });
 
@@ -159,6 +269,10 @@ export class AgentService implements OnModuleInit {
       failure = error instanceof Error ? error.message : String(error);
     } finally {
       unsubscribe();
+      assistantSpan?.end({ status: "error" });
+      turnSpan.end(
+        failure ? { status: "error", error: { name: "AgentError", message: failure } } : undefined,
+      );
     }
 
     return { text: text.trim(), model: label, ...(failure ? { error: failure } : {}) };
@@ -219,7 +333,11 @@ export class AgentService implements OnModuleInit {
     return true;
   }
 
-  async runChat(request: ChatRequest, onEvent: (event: ChatEvent) => void): Promise<void> {
+  async runChat(
+    request: ChatRequest,
+    onEvent: (event: ChatEvent) => void,
+    origin?: TelemetryOrigin,
+  ): Promise<void> {
     const agent = this.getSession(request.sessionId);
 
     if (agent.state.isStreaming) {
@@ -245,6 +363,7 @@ export class AgentService implements OnModuleInit {
             "pi.ai.provider": activeModel.provider,
             "pi.ai.model": activeModel.id,
             "turn.prompt_length": request.message.length,
+            ...originAttributes(origin),
           });
           break;
 
@@ -263,6 +382,7 @@ export class AgentService implements OnModuleInit {
                 "pi.ai.api": message.api,
                 "pi.ai.streaming": true,
                 "session.id": request.sessionId,
+                ...originAttributes(origin),
               },
               turnSpan?.id ?? null,
             );
@@ -288,25 +408,13 @@ export class AgentService implements OnModuleInit {
         case "message_end":
           if (event.message.role === "assistant" && assistantSpan) {
             const message = event.message as AssistantMessage;
-            const usage = message.usage;
-            assistantSpan.setAttributes({
-              "pi.ai.response.model": message.responseModel ?? message.model,
-              ...(message.responseId ? { "pi.ai.response.id": message.responseId } : {}),
-              "pi.ai.response.stop_reason": stopReasonAttr(message.stopReason),
-              "pi.ai.usage.input_tokens": usage.input,
-              "pi.ai.usage.output_tokens": usage.output,
-              "pi.ai.usage.cache_read_tokens": usage.cacheRead,
-              "pi.ai.usage.cache_write_tokens": usage.cacheWrite,
-              ...(usage.reasoning === undefined
-                ? {}
-                : { "pi.ai.usage.reasoning_tokens": usage.reasoning }),
-              "pi.ai.usage.total_tokens": usage.totalTokens,
-              "pi.ai.usage.cost": usage.cost.total,
-              "pi.ai.stream.chunk_count": chunkCount,
-              ...(firstChunkAt === undefined
-                ? {}
-                : { "pi.ai.stream.time_to_first_chunk_ms": firstChunkAt - assistantStartedAt }),
-            });
+            assistantSpan.setAttributes(
+              usageAttributes(message, {
+                startedAt: assistantStartedAt,
+                chunkCount,
+                firstChunkAt,
+              }),
+            );
             if (message.stopReason === "error" || message.stopReason === "aborted") {
               assistantSpan.end({
                 status: "error",
@@ -330,6 +438,7 @@ export class AgentService implements OnModuleInit {
               "tool.name": event.toolName,
               "tool.call_id": event.toolCallId,
               "session.id": request.sessionId,
+              ...originAttributes(origin),
             },
             turnSpan?.id ?? null,
           );
