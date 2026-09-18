@@ -6,6 +6,13 @@ import type { Components, ExtraProps } from "streamdown";
 
 type AnchorProps = ComponentProps<"a"> & ExtraProps;
 
+const CITATION_LABEL_LIMIT = 15;
+
+function truncateLabel(label: React.ReactNode): React.ReactNode {
+  if (typeof label !== "string" || label.length <= CITATION_LABEL_LIMIT) return label;
+  return `${label.slice(0, CITATION_LABEL_LIMIT)}…`;
+}
+
 function CitationChip({
   label,
   title,
@@ -23,7 +30,7 @@ function CitationChip({
       className="mx-0.5 inline-flex max-w-[16rem] cursor-pointer items-center gap-1 truncate rounded-md border border-border bg-muted px-1.5 py-0.5 align-baseline font-mono text-[0.72rem] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent hover:text-foreground"
     >
       <FileTextIcon className="size-3 shrink-0" />
-      <span className="truncate">{label}</span>
+      <span className="truncate">{truncateLabel(label)}</span>
     </button>
   );
 }
