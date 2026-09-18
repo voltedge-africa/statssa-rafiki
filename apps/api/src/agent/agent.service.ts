@@ -10,19 +10,40 @@ import { guardedFetch } from "./offline.ts";
 import { SpanHandle, TelemetryService } from "./telemetry.service.ts";
 import { TOOLS } from "./tools.ts";
 import { extractUiBlock } from "./ui/blocks.ts";
+import { collectToolGroundTruth, extractNumbers, verifyNumbers } from "./verifier.ts";
 
 export const SYSTEM_PROMPT = [
   "You are Rafiki, an assistant for Statistics South Africa (Stats SA).",
-  "You help analysts find, interpret and compute with official South African statistics.",
-  "For any question about published statistics, first call search_statssa and answer from the passages it returns.",
-  "Cite every figure you take from the corpus using its [source#chunk] id, and never state a statistic that is not in the returned passages.",
-  "If the corpus does not cover the question, say so explicitly and name the Stats SA release or series that would answer it.",
+  "You answer every question through exactly one of two data pipelines, chosen by what the question asks for.",
+  "",
+  "PIPELINE 1 — TEXT LAYER (search_statssa, the Vector DB):",
+  "Use for narrative, methodology, definitions, and 'why'/'how' questions.",
+  "Examples: 'How are survey weights calibrated?', 'Why did the survey switch to CAPI?'.",
+  "Every factual claim you make must be immediately followed by its [source#chunk] citation id, exactly as returned by search_statssa.",
+  "Never use search_statssa passages to look up exact statistics or numbers.",
+  "",
+  "PIPELINE 2 — FACT STORE (list_fact_tables, then query_factstore, the SQL database):",
+  "Use for questions asking for exact numbers, statistics, metrics or table values.",
+  "If a user asks for a statistical figure, you must first call list_fact_tables to find the relevant table.",
+  "Once you identify the table name, YOU MUST immediately call query_factstore to extract the rows before answering.",
+  "Never answer or refuse a statistics question before query_factstore has been called; if the SQL fails, correct it and call it again.",
+  "Every number you report must come from the query result rows; cite each figure as [factstore:<table_name>].",
+  "Never answer an exact-number question from search_statssa passages, never compute or estimate a figure yourself, and never answer a number question from general knowledge.",
+  "Use the calculate tool only on numbers returned by query_factstore.",
+  "",
+  "NEGATIVE REJECTION (applies to both pipelines):",
+  "Do not refuse without evidence: for statistics questions the refusal is only valid AFTER query_factstore has actually returned no rows; for narrative questions, only after search_statssa returned no relevant passages.",
+  "If the retrieved passages do not explicitly contain the facts needed to answer the question, or query_factstore returns no rows, output exactly:",
+  '"The provided Stats SA documentation does not contain this information."',
+  "and nothing else.",
+  "Never extrapolate, interpolate, guess, infer missing values, or answer from general knowledge or training data.",
+  "",
+  "VISUALS AND OTHER TOOLS:",
   "You can also present results visually: show_table for tabular comparisons, show_chart for trends (line) or comparisons (bar).",
-  "Only tabulate or chart figures that appear in passages returned by search_statssa, and set the source field to the [source#chunk] ids you used.",
+  "Only tabulate or chart figures that come from search_statssa passages or query_factstore rows, and set the source field to the ids you used.",
   "Call show_document when the user asks to see or open a specific indexed document, using the exact source path from search results.",
   "After a visual tool call, give a one-line interpretation instead of repeating the data in prose.",
-  "Use the other tools when they help: calculate for arithmetic, current_time for date-sensitive questions.",
-  "Be explicit about what you know, what you are assuming, and what data would be required to answer definitively.",
+  "Use current_time for date-sensitive questions.",
   "Answer concisely and prefer South African English.",
 ].join("\n");
 
@@ -150,17 +171,22 @@ export class AgentService implements OnModuleInit {
   }
 
   /**
-   * Run a single, tool-free completion with a caller-supplied system prompt.
-   *
-   * Used by features (like the media room draft) that do their own retrieval and
-   * only need the model to turn supplied passages into prose. Returns the text,
+   * Run a completion with a caller-supplied system prompt, optionally with
+   * tools. Used by features (like the media room draft) that do their own
+   * retrieval and only need the model to turn supplied passages — and, for
+   * media drafts, read-only fact-store lookups — into prose. Returns the text,
    * the model that produced it, and any provider error instead of throwing, so
    * callers can surface an information gap rather than a 500.
    *
    * Emits the same `rafiki.turn` + `pi.ai.request` telemetry as chat so
    * governance sees every model call, regardless of feature.
    */
-  async complete(input: { system: string; user: string; feature?: string }): Promise<{
+  async complete(input: {
+    system: string;
+    user: string;
+    feature?: string;
+    tools?: AgentTool<any, any>[];
+  }): Promise<{
     text: string;
     model: string;
     error?: string;
@@ -179,7 +205,7 @@ export class AgentService implements OnModuleInit {
       initialState: {
         systemPrompt: input.system,
         model,
-        tools: [],
+        tools: input.tools ?? [],
       },
       streamFn: (current, context, options) =>
         collection.streamSimple(current, context, {
@@ -355,6 +381,12 @@ export class AgentService implements OnModuleInit {
     let toolCallCount = 0;
     const toolSpans = new Map<string, SpanHandle>();
 
+    // Ground truth for the post-turn verification: numbers the user supplied
+    // plus every number retrieved by the tools during this turn.
+    const groundTruthNumbers = new Set<string>();
+    for (const number of extractNumbers(request.message)) groundTruthNumbers.add(number);
+    let answerText = "";
+
     const unsubscribe = agent.subscribe((event) => {
       switch (event.type) {
         case "agent_start":
@@ -399,8 +431,10 @@ export class AgentService implements OnModuleInit {
             chunkCount += 1;
             firstChunkAt ??= Date.now();
           }
-          if (update.type === "text_delta") onEvent({ type: "text", delta: update.delta });
-          else if (update.type === "thinking_delta")
+          if (update.type === "text_delta") {
+            answerText += update.delta;
+            onEvent({ type: "text", delta: update.delta });
+          } else if (update.type === "thinking_delta")
             onEvent({ type: "thinking", delta: update.delta });
           break;
         }
@@ -469,6 +503,7 @@ export class AgentService implements OnModuleInit {
           }
 
           const details = (event.result as { details?: unknown } | undefined)?.details;
+          collectToolGroundTruth(event.toolName, details, groundTruthNumbers);
           const block = event.isError ? undefined : extractUiBlock(details);
           if (block) onEvent({ type: "ui", block, toolCallId: event.toolCallId });
 
@@ -492,7 +527,15 @@ export class AgentService implements OnModuleInit {
     try {
       await agent.prompt(request.message);
       failure = agent.state.errorMessage;
-      if (failure) onEvent({ type: "error", message: failure });
+      if (failure) {
+        onEvent({ type: "error", message: failure });
+      } else if (answerText.trim()) {
+        const verification =
+          toolCallCount === 0
+            ? { status: "skipped" as const, unverified: [] as string[] }
+            : verifyNumbers(answerText, groundTruthNumbers);
+        onEvent({ type: "verification", ...verification });
+      }
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
       onEvent({ type: "error", message: failure });

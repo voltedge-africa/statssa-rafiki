@@ -190,9 +190,14 @@ export const mediaRequestListQuerySchema = object({
 
 export type MediaRequestListQuery = InferOutput<typeof mediaRequestListQuerySchema>;
 
-/** A reference passage the AI draft was grounded in. */
+/**
+ * A reference the AI draft was grounded in: either a corpus passage
+ * (`chunkId` set) or a published fact-store table (`table` set, cited in the
+ * draft as `[factstore:<table>]`).
+ */
 export interface MediaDraftSource {
-  chunkId: number;
+  chunkId: number | null;
+  table?: string | null;
   source: string;
   title: string | null;
   snippet: string;
@@ -331,4 +336,16 @@ export function extractCitationIds(text: string): number[] {
     if (Number.isInteger(chunkId)) ids.add(chunkId);
   }
   return [...ids];
+}
+
+/**
+ * Extract the `[factstore:<table>]` citations in a response body, so the API
+ * can map them back to the published tables a draft or approval relied on.
+ */
+export function extractFactstoreTables(text: string): string[] {
+  const tables = new Set<string>();
+  for (const match of text.matchAll(/\[factstore:([A-Za-z0-9_.]+)\]/g)) {
+    tables.add(match[1]);
+  }
+  return [...tables];
 }

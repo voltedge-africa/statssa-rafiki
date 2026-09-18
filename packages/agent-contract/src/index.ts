@@ -36,6 +36,7 @@ export type ChatEvent =
       details?: unknown;
     }
   | { type: "ui"; block: UiBlock; toolCallId: string }
+  | { type: "verification"; status: VerificationStatus; unverified: string[] }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -285,6 +286,9 @@ export interface IndexedDocument {
 
 export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
 
+/** Result of the deterministic post-turn number check. */
+export type VerificationStatus = "verified" | "unverified" | "skipped";
+
 export interface ToolRun {
   id: string;
   name: string;
@@ -303,4 +307,6 @@ export interface ChatMessage {
   tools: ToolRun[];
   blocks: UiBlock[];
   error?: string;
+  /** Set from the post-turn `verification` event, when one is emitted. */
+  verification?: { status: VerificationStatus; unverified: string[] };
 }
