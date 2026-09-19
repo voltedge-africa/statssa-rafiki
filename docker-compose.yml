@@ -17,7 +17,8 @@ name: rafiki
 
 services:
   # pgvector build of Postgres 17: `rafiki_auth` holds users, POPIA and media
-  # tables; `rafiki_rag` holds the vector index (needs the pgvector extension).
+  # tables; `rafiki_rag` holds the vector index (needs the pgvector extension);
+  # `rafiki_fact` holds the read-only published-tables fact store.
   postgres:
     image: pgvector/pgvector:pg17
     network_mode: host
@@ -83,6 +84,25 @@ services:
       postgres:
         condition: service_healthy
 
+  # One-shot: derive the fact-store CSVs from the GHS markdown corpus and load
+  # them into rafiki_fact. Re-runs are cheap — each table is dropped and
+  # recreated. The API still boots without it (the fact-store check reports no
+  # tables and the agent falls back to the corpus).
+  factstore-init:
+    build:
+      context: .
+      target: runtime
+    network_mode: host
+    restart: "no"
+    working_dir: /app/apps/api
+    command:
+      ["/bin/sh", "-c", "node src/agent/factstore-derive.ts && node src/agent/factstore-load.ts"]
+    environment:
+      FACT_DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_fact
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # OpenAuth issuer on http://localhost:3000 (Bun).
   auth:
     build:
@@ -133,6 +153,7 @@ services:
       AUTH_PORT: "3000"
       DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth
       RAG_DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_rag
+      FACT_DATABASE_URL: postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_fact
       RAG_MODELS_DIR: /app/apps/api/models
       OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
     volumes:
@@ -141,6 +162,9 @@ services:
       postgres:
         condition: service_healthy
       rag-init:
+        condition: service_completed_successfully
+        required: false
+      factstore-init:
         condition: service_completed_successfully
         required: false
     healthcheck:

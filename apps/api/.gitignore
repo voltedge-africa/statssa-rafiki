@@ -8,3 +8,6 @@ dist
 # Local RAG index and embedding model cache (regenerate with `rag:ingest` / `rag:model`)
 data
 models
+
+# Fact-store CSVs, derived from the GHS markdown corpus (regenerate with `factstore:derive`)
+fact_store

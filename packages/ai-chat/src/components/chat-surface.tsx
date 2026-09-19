@@ -8,7 +8,7 @@ import {
   SidebarTrigger,
   Spinner,
 } from "@voltedge/ui";
-import { SquarePenIcon } from "lucide-react";
+import { ShieldAlertIcon, ShieldCheckIcon, SquarePenIcon } from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -28,10 +28,10 @@ import { useChat } from "../hooks/use-chat.ts";
 import { useTelemetry } from "../hooks/use-telemetry.ts";
 
 const DEFAULT_SUGGESTIONS = [
-  "Chart headline inflation from 2021 to 2024 as a line chart.",
-  "Show a table of the CPI index and headline inflation by year.",
-  "How is headline inflation different from core inflation?",
-  "Open the document sample/cpi-index.md.",
+  "Chart household internet access by province in 2025 as a bar chart.",
+  "Show a table of household asset ownership in 2025.",
+  "How has access to improved sanitation changed since 2002?",
+  "Open the document ghs-2025-media-release.md.",
 ];
 
 export interface ChatSurfaceProps {
@@ -228,6 +228,20 @@ export function ChatSurface({
                           {message.error && (
                             <p className="mt-2 text-sm text-destructive">{message.error}</p>
                           )}
+
+                          {message.verification &&
+                            message.verification.status !== "skipped" &&
+                            (message.verification.status === "verified" ? (
+                              <Badge variant="secondary" className="mt-2 gap-1 text-[11px]">
+                                <ShieldCheckIcon className="size-3" />
+                                Numbers verified against sources
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" className="mt-2 gap-1 text-[11px]">
+                                <ShieldAlertIcon className="size-3" />
+                                Unverified numbers: {message.verification.unverified.join(", ")}
+                              </Badge>
+                            ))}
                         </MessageContent>
                       </Message>
                     );

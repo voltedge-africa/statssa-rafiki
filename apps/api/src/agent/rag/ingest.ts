@@ -10,7 +10,7 @@ import {
   EMBED_BATCH,
   MODEL_ID,
 } from "./config.ts";
-import { indexStats, initSchema, openDatabase, upsertDocument } from "./db.ts";
+import { indexStats, initSchema, openDatabase, pruneDocuments, upsertDocument } from "./db.ts";
 import { embedPassages } from "./embed.ts";
 
 const SUPPORTED = new Set([".txt", ".md", ".json", ".jsonl"]);
@@ -80,20 +80,17 @@ export interface Chunk {
   text: string;
 }
 
-const PAGE_MARKER_RE = /^---[ \t]*\*Page (\d+)\*[ \t]*$/gm;
-const TWO_LINE_PAGE_RE = /^---[ \t]*\r?\n[ \t]*\*Page (\d+)\*[ \t]*$/gm;
+/**
+ * A page separator: a `---` rule (optionally followed by blank lines) plus a
+ * `*Page N*` / `_Page N_` marker, or the marker alone. The Stats SA PDF
+ * converter emits `---`, a blank line, then `_Page N_`; other converters emit
+ * the single-line `--- *Page N*` form, so all are accepted.
+ */
+const PAGE_MARKER_RE =
+  /^(?:---[ \t]*\r?\n(?:[ \t]*\r?\n)*[ \t]*|---[ \t]*)?[*_]Page (\d+)[*_][ \t]*$/gm;
 const HEADING_RE = /^(#{1,4})\s+(.+)$/;
 
-/**
- * The converter emits page separators as two lines (`---` then `*Page N*`);
- * the blueprint's single-line form (`--- *Page N*`) is also accepted. Both are
- * normalised to the single-line form before splitting.
- */
-function normalizePageMarkers(text: string): string {
-  return text.replace(TWO_LINE_PAGE_RE, "--- *Page $1*");
-}
-
-/** Split on the `--- *Page N*` separators, tagging each segment with its page number. */
+/** Split on page separators, tagging each segment with its page number. */
 function splitPages(text: string): { page: number | null; text: string }[] {
   const segments: { page: number | null; text: string }[] = [];
   let page: number | null = null;
@@ -198,7 +195,7 @@ function chunkSection(section: {
  * context always shows where a passage came from.
  */
 function chunkText(text: string): Chunk[] {
-  const normalized = normalizePageMarkers(text.replace(/\r\n/g, "\n")).trim();
+  const normalized = text.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
 
   const chunks: Chunk[] = [];
@@ -249,6 +246,10 @@ async function ensureDatabase(url: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const args = new Set(process.argv.slice(2));
+  const force = args.has("--force");
+  const prune = args.has("--prune");
+
   const corpus = resolve(CORPUS_DIR);
   if (!(await exists(corpus))) {
     console.error(`Corpus directory not found: ${corpus}`);
@@ -267,10 +268,11 @@ async function main(): Promise<void> {
     console.log(`Corpus:   ${corpus}`);
     console.log(`Database: ${new URL(DATABASE_URL).pathname.slice(1)}`);
     console.log(`Model:    ${MODEL_ID}`);
-    console.log(`Files:    ${files.length}\n`);
+    console.log(`Files:    ${files.length}${force ? " (force reindex)" : ""}\n`);
 
     let written = 0;
     let skipped = 0;
+    const kept: string[] = [];
 
     for (const file of files) {
       const source = relative(corpus, file);
@@ -294,7 +296,10 @@ async function main(): Promise<void> {
         process.stdout.write(`\r${source}: embedded ${vectors.length}/${chunks.length}`);
       }
 
-      const changed = await upsertDocument(db, { source, title, sha256, text }, chunks, vectors);
+      const changed = await upsertDocument(db, { source, title, sha256, text }, chunks, vectors, {
+        force,
+      });
+      kept.push(source);
       process.stdout.write("\n");
       if (changed) {
         written += 1;
@@ -303,6 +308,11 @@ async function main(): Promise<void> {
         skipped += 1;
         console.log(`skip  ${source} (unchanged)`);
       }
+    }
+
+    if (prune) {
+      const removed = await pruneDocuments(db, kept);
+      console.log(`prune ${removed} document(s) no longer in the corpus.`);
     }
 
     const stats = await indexStats(db);

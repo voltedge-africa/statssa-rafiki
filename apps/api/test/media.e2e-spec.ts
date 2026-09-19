@@ -47,7 +47,7 @@ const staffDetail = {
     sources: [
       {
         chunkId: 4,
-        source: "sample/cpi-index.md",
+        source: "ghs-2025-statistical-release.md",
         title: "CPI index",
         snippet: "July 2026 CPI",
       },

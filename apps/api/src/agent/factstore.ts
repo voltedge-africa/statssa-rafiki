@@ -29,6 +29,14 @@ function database(): Sql {
   return connection;
 }
 
+/** Close the shared connection so one-shot CLI scripts can exit. */
+export async function closeFactStore(): Promise<void> {
+  if (!connection) return;
+  const current = connection;
+  connection = undefined;
+  await current.end();
+}
+
 /** Create the fact database when it does not exist yet, connecting through `postgres`. */
 async function ensureDatabase(url: string): Promise<void> {
   const name = decodeURIComponent(new URL(url).pathname.replace(/^\//, ""));
@@ -97,13 +105,18 @@ export interface FactQueryResult {
   rowCount: number;
 }
 
-/** True when the factstore schema has at least one loaded table. */
+/** Create the fact database and schema if they do not exist. Used by the CSV loader. */
+export async function ensureFactStore(): Promise<void> {
+  await prepare();
+}
+
+/** True when the factstore schema has at least one loaded data table. */
 export async function hasFactTables(): Promise<boolean> {
   await prepare();
   const [row] = await database()<{ n: number }[]>`
     SELECT COUNT(*)::int AS n
     FROM information_schema.tables
-    WHERE table_schema = ${FACT_SCHEMA}
+    WHERE table_schema = ${FACT_SCHEMA} AND table_name <> 'table_descriptions'
   `;
   return (row?.n ?? 0) > 0;
 }
@@ -227,7 +240,7 @@ export const listFactTables: AgentTool<typeof ListFactTablesParameters, { tables
       const rows = await db<SchemaColumn[]>`
         SELECT table_name, column_name, data_type, is_nullable
         FROM information_schema.columns
-        WHERE table_schema = ${FACT_SCHEMA}
+        WHERE table_schema = ${FACT_SCHEMA} AND table_name <> 'table_descriptions'
         ORDER BY table_name, ordinal_position
       `;
 

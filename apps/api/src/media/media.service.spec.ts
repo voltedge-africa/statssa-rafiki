@@ -170,8 +170,13 @@ class FakeDraftService {
   result: MediaDraftResult = {
     text: "Headline inflation was 3.2% in July 2026 [cpi-index#4].",
     sources: [
-      { chunkId: 4, source: "sample/cpi-index.md", title: "CPI index", snippet: "July 2026 CPI" },
-      { chunkId: 9, source: "sample/other.md", title: "Other", snippet: "not cited" },
+      {
+        chunkId: 4,
+        source: "ghs-2025-statistical-release.md",
+        title: "CPI index",
+        snippet: "July 2026 CPI",
+      },
+      { chunkId: 9, source: "ghs-2025-media-release.md", title: "Other", snippet: "not cited" },
     ],
     gap: null,
     model: "test/model",
@@ -385,7 +390,7 @@ describe("MediaService", () => {
       sources: [
         {
           chunkId: 4,
-          source: "sample/cpi-index.md",
+          source: "ghs-2025-statistical-release.md",
           title: "CPI index",
           snippet: "July 2026 CPI",
         },

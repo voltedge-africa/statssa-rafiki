@@ -127,6 +127,7 @@ export async function upsertDocument(
   document: DocumentInput,
   chunks: ChunkInput[],
   vectors: Float32Array[],
+  options: { force?: boolean } = {},
 ): Promise<boolean> {
   if (chunks.length !== vectors.length) {
     throw new Error(`chunks (${chunks.length}) and vectors (${vectors.length}) length mismatch`);
@@ -135,7 +136,12 @@ export async function upsertDocument(
   const [existing] = await db<{ id: number; sha256: string; text: string }[]>`
     SELECT id, sha256, text FROM documents WHERE source = ${document.source}
   `;
-  if (existing && existing.sha256 === document.sha256 && existing.text === document.text) {
+  if (
+    !options.force &&
+    existing &&
+    existing.sha256 === document.sha256 &&
+    existing.text === document.text
+  ) {
     return false;
   }
 
@@ -173,6 +179,19 @@ export async function upsertDocument(
   });
 
   return true;
+}
+
+/**
+ * Delete indexed documents whose `source` is no longer in the corpus. Used by
+ * `rag:ingest --prune` to retire removed corpus files from the index. Returns
+ * the number of documents removed.
+ */
+export async function pruneDocuments(db: RagDatabase, keep: string[]): Promise<number> {
+  const removed =
+    keep.length === 0
+      ? await db`DELETE FROM documents`
+      : await db`DELETE FROM documents WHERE source NOT IN ${db(keep)}`;
+  return removed.count;
 }
 
 const STOPWORDS = new Set([

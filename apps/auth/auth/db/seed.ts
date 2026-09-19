@@ -387,20 +387,38 @@ const POPIA_SEEDS: PopiaSeed[] = [
   },
 ];
 
-const CPI_SOURCE: MediaDraftSource = {
+const GHS_STAT_RELEASE_SOURCE: MediaDraftSource = {
   chunkId: 1,
-  source: "sample/cpi-index.md",
-  title: "Consumer Price Index (CPI) — P0141 sample extract",
+  table: null,
+  source: "ghs-2025-statistical-release.md",
+  title: "General Household Survey 2025 — P0318",
   snippet:
-    "Annual consumer price inflation was 4,3% in July 2026, down from 5,0% in June 2026. The CPI increased by 0,2% month-on-month.",
+    "Access to the internet through a fixed connection increased steadily to 20,6% in 2025, while mobile broadband reached 85,6% of households.",
 };
 
-const CORE_SOURCE: MediaDraftSource = {
+const GHS_MEDIA_SOURCE: MediaDraftSource = {
   chunkId: 1,
-  source: "sample/headline-vs-core-inflation.md",
-  title: "Headline vs core inflation",
+  table: null,
+  source: "ghs-2025-media-release.md",
+  title: "General Household Survey (GHS), 2025 — media release",
   snippet:
-    "Headline inflation is the annual change in the all items CPI. Core inflation removes food and fuel prices so the underlying trend is easier to read.",
+    "Access to improved sanitation increased from 61,7% in 2002 to 84,0% in 2025, while electricity access rose from 76,7% to 90,6%.",
+};
+
+const INTERNET_TABLE_SOURCE: MediaDraftSource = {
+  chunkId: null,
+  table: "internet_access_by_province",
+  source: "factstore:internet_access_by_province",
+  title: null,
+  snippet: "Published table: factstore.internet_access_by_province (2025).",
+};
+
+const ASSETS_TABLE_SOURCE: MediaDraftSource = {
+  chunkId: null,
+  table: "household_assets",
+  source: "factstore:household_assets",
+  title: null,
+  snippet: "Published table: factstore.household_assets (2025).",
 };
 
 interface MediaEventSeed {
@@ -455,7 +473,7 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterEmail: "press@example.co.za",
     requesterId: PRESS,
     outlet: "The Daily Line",
-    claim: "Is it true that headline inflation fell to 2,1% in July 2026?",
+    claim: "Is it true that access to improved sanitation rose to 84,0% in 2025?",
     context: "A minister cited this figure in a speech this morning.",
     createdAt: agoHours(2),
     updatedAt: agoHours(2),
@@ -476,7 +494,7 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterEmail: "amara.naidoo@example.co.za",
     requesterId: AMARA,
     outlet: "News24",
-    claim: "What was the CPI index reading for June 2026?",
+    claim: "What share of households had access to any kind of internet in 2025?",
     assignedTo: STAFF,
     createdAt: agoHours(5),
     updatedAt: agoHours(1),
@@ -511,11 +529,11 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterEmail: "press@example.co.za",
     requesterId: PRESS,
     outlet: "SABC News",
-    claim: "How does headline inflation compare with core inflation for 2025?",
+    claim: "How does household access to the internet compare across provinces in 2025?",
     assignedTo: STAFF,
     aiDraft:
-      "Headline inflation is the annual change in the all items CPI, the full basket of goods and services bought by urban households [sample/cpi-index.md#1]. In July 2026 headline inflation was 4,3%, down from 5,0% in June 2026 [sample/headline-vs-core-inflation.md#1].\n\nCore inflation removes food and fuel prices, which move around for temporary reasons, so it shows the underlying trend. In July 2026 the core measure was 4,2% [sample/headline-vs-core-inflation.md#1].",
-    aiSources: [CPI_SOURCE, CORE_SOURCE],
+      "Nationally, 85,6% of households had at least one member with access to the internet in 2025 [ghs-2025-statistical-release.md#1]. Access was highest in the Western Cape (93,8%), Gauteng (88,5%) and KwaZulu-Natal (87,3%), and lowest in the Eastern Cape (74,5%) [factstore:internet_access_by_province].\n\nMobile access (78,9%) was far more common than a fixed connection at home (20,6%) [factstore:internet_access_by_province].",
+    aiSources: [GHS_STAT_RELEASE_SOURCE, GHS_MEDIA_SOURCE, INTERNET_TABLE_SOURCE],
     aiModel: "seed-demo-model",
     aiGeneratedAt: agoHours(9),
     createdAt: agoDays(1),
@@ -594,16 +612,17 @@ const MEDIA_SEEDS: MediaSeed[] = [
     requesterEmail: "grace.nkosi@example.co.za",
     requesterId: GRACE,
     outlet: "Business Day",
-    claim: "What was headline inflation in July 2026 and how did it change from June?",
+    claim:
+      "How common is ownership of electric stoves and refrigerators in South African households?",
     assignedTo: STAFF,
     aiDraft:
-      "Annual consumer price inflation was 4,3% in July 2026, down from 5,0% in June 2026 [sample/cpi-index.md#1].",
-    aiSources: [CPI_SOURCE],
+      "Household asset ownership remained high in 2025, with electric stoves owned by 88,3% of households and refrigerators by 81,5% [factstore:household_assets].",
+    aiSources: [ASSETS_TABLE_SOURCE],
     aiModel: "seed-demo-model",
     aiGeneratedAt: agoDays(3),
     approvedResponse:
-      "Annual consumer price inflation was 4,3% in July 2026, down from 5,0% in June 2026 [sample/cpi-index.md#1]. On a month-on-month basis the CPI rose 0,2% [sample/cpi-index.md#1].",
-    approvedSources: [CPI_SOURCE],
+      "Household asset ownership remained high in 2025, with electric stoves owned by 88,3% of households and refrigerators by 81,5% [factstore:household_assets]. Ownership was similar across urban and metro households.",
+    approvedSources: [ASSETS_TABLE_SOURCE],
     approvedAt: agoDays(1),
     approvedBy: ADMIN,
     createdAt: agoDays(4),

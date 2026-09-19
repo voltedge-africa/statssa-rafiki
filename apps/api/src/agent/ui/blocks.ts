@@ -15,7 +15,9 @@ export const TableParameters = Type.Object({
     description: "Row data. Each row should have one value per column.",
   }),
   source: Type.Optional(
-    Type.String({ description: "Source ids backing the figures, e.g. 'sample/cpi.md#1'." }),
+    Type.String({
+      description: "Source ids backing the figures, e.g. 'ghs-2025-statistical-release.md#12'.",
+    }),
   ),
 });
 
@@ -40,7 +42,7 @@ export const ChartParameters = Type.Object({
 export const DocumentParameters = Type.Object({
   source: Type.String({
     description:
-      "Exact document source path returned by search_statssa, e.g. 'sample/cpi-methodology.md'.",
+      "Exact document source path returned by search_statssa, e.g. 'ghs-2025-media-release.md'.",
   }),
 });
 

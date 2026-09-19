@@ -10,7 +10,9 @@
     "pretest": "vp run @voltedge/auth-contract#build",
     "test": "vp test",
     "rag:ingest": "node src/agent/rag/ingest.ts",
-    "rag:model": "node src/agent/rag/fetch-model.ts"
+    "rag:model": "node src/agent/rag/fetch-model.ts",
+    "factstore:derive": "node src/agent/factstore-derive.ts",
+    "factstore:load": "node src/agent/factstore-load.ts"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.85.1",

@@ -18,17 +18,17 @@ const hits = [
   {
     chunkId: 4,
     documentId: 1,
-    source: "sample/cpi-index.md",
-    title: "CPI index",
+    source: "ghs-2025-statistical-release.md",
+    title: "General Household Survey 2025",
     heading: null,
     page: null,
-    text: "Headline inflation was 3.2% in July 2026.",
+    text: "Access to improved sanitation rose to 84.0% in 2025.",
     score: 0.9,
   },
   {
     chunkId: 9,
     documentId: 2,
-    source: "sample/other.md",
+    source: "ghs-2025-media-release.md",
     title: "Other release",
     heading: null,
     page: null,
@@ -88,7 +88,7 @@ describe("MediaDraftService", () => {
 
     const prompt = complete.mock.calls[0]?.[0] as unknown as { system: string; user: string };
     expect(prompt.user).toContain("Context here.");
-    expect(prompt.user).toContain("Headline inflation was 3.2%");
+    expect(prompt.user).toContain("Access to improved sanitation rose to 84.0%");
     expect(prompt.system).toContain("INFORMATION_GAP");
   });
 
