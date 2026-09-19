@@ -4,6 +4,8 @@ import {
   approveMediaRequestSchema,
   canTransition,
   createMediaNoteSchema,
+  DRAFT_CONFIDENCE_MIN,
+  draftConfidence,
   extractCitationIds,
   isMediaReference,
   isOpenStatus,
@@ -12,8 +14,10 @@ import {
   mediaRequestListQuerySchema,
   regenerateMediaRequestSchema,
   rejectMediaRequestSchema,
+  reviewDraft,
   submitMediaRequestSchema,
   toRequestSummary,
+  type MediaDraftSource,
   type MediaRequestPublic,
   updateMediaRequestSchema,
 } from "../src/index.ts";
@@ -135,6 +139,76 @@ test("extracts the chunk ids cited in a response", () => {
     extractCitationIds("Inflation eased to 3.2% [cpi-index#12] and food slowed [cpi#4]."),
   ).toEqual([12, 4]);
   expect(extractCitationIds("No citations here.")).toEqual([]);
+});
+
+function source(similarity?: number): MediaDraftSource {
+  return {
+    chunkId: 4,
+    source: "sample/cpi-index.md",
+    title: "CPI index",
+    snippet: "Headline inflation was 3.2% in July 2026.",
+    ...(similarity === undefined ? {} : { similarity }),
+  };
+}
+
+test("draft confidence is the weakest recorded passage similarity, or null", () => {
+  expect(draftConfidence([])).toBeNull();
+  expect(draftConfidence([source(), source()])).toBeNull();
+  expect(draftConfidence([source(0.91)])).toBeCloseTo(0.91);
+  expect(draftConfidence([source(0.9), source(0.82)])).toBeCloseTo(0.82);
+});
+
+test("a grounded, fully cited draft passes the enforcement gate", () => {
+  const review = reviewDraft("Headline inflation was 3.2% in July 2026 [cpi-index#4].", [
+    source(0.9),
+  ]);
+  expect(review.passed).toBe(true);
+  expect(review.checks.every((check) => check.passed)).toBe(true);
+  expect(review.checks.find((check) => check.id === "grounded")?.severity).toBe("gate");
+});
+
+test("an uncited sentence is an advisory warning, not a hard block", () => {
+  const review = reviewDraft(
+    "Inflation was 3.2% in July 2026 [cpi-index#4]. This matters for household budgets across the country.",
+    [source(0.9)],
+  );
+  const check = review.checks.find((item) => item.id === "fully-cited");
+  expect(check?.passed).toBe(false);
+  expect(check?.severity).toBe("advisory");
+  expect(review.passed).toBe(true);
+});
+
+test("a draft with no citation fails the gate", () => {
+  const review = reviewDraft("Inflation was 3.2% in July 2026.", [source(0.9)]);
+  expect(review.checks.find((check) => check.id === "cited")?.passed).toBe(false);
+  expect(review.passed).toBe(false);
+});
+
+test("a citation to a source that was not retrieved fails the gate", () => {
+  const review = reviewDraft("Inflation was 3.2% [other#99].", [source(0.9)]);
+  expect(review.checks.find((check) => check.id === "valid-citations")?.passed).toBe(false);
+  expect(review.passed).toBe(false);
+});
+
+test("an empty draft or no sources fails the grounded gate", () => {
+  expect(reviewDraft(null, [source(0.9)]).passed).toBe(false);
+  expect(reviewDraft("Inflation was 3.2% [cpi-index#4].", []).passed).toBe(false);
+});
+
+test("a weak passage similarity fails the confidence gate", () => {
+  // 0.82 clears retrieval's 0.8 admission floor but sits below the escalation floor,
+  // so this is exactly the draft the confidence gate exists to catch.
+  expect(DRAFT_CONFIDENCE_MIN).toBeGreaterThan(0.8);
+  const review = reviewDraft("Inflation was 3.2% [cpi-index#4].", [source(0.82)]);
+  expect(review.checks.find((check) => check.id === "confidence")?.passed).toBe(false);
+  expect(review.passed).toBe(false);
+});
+
+test("missing similarity leaves the confidence gate passing with a note", () => {
+  const review = reviewDraft("Inflation was 3.2% [cpi-index#4].", [source()]);
+  const check = review.checks.find((item) => item.id === "confidence");
+  expect(check?.passed).toBe(true);
+  expect(check?.detail).toMatch(/not recorded/i);
 });
 
 const publicRequest: MediaRequestPublic = {

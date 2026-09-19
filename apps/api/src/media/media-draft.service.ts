@@ -37,6 +37,7 @@ function toSource(hit: RagHit): MediaDraftSource {
     source: hit.source,
     title: hit.title,
     snippet: hit.text.slice(0, 240),
+    ...(hit.similarity === undefined ? {} : { similarity: hit.similarity }),
   };
 }
 

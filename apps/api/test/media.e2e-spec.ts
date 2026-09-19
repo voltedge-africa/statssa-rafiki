@@ -55,6 +55,7 @@ const staffDetail = {
     gap: null,
     model: "test/model",
     generatedAt: "2026-09-18T00:05:00.000Z",
+    confidence: null,
   },
   events: [],
 };

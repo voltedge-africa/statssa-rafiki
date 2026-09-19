@@ -9,6 +9,7 @@ import {
 import type { AuthUser } from "@voltedge/auth-contract";
 import {
   canTransition,
+  draftConfidence,
   extractCitationIds,
   isTerminalStatus,
   toRequestSummary,
@@ -97,12 +98,14 @@ function toPublicView(record: MediaRequestRecord): MediaRequestPublic {
 
 function toDraftView(record: MediaRequestRecord): MediaAiDraft | null {
   if (!record.aiDraft && !record.aiGap && !record.aiGeneratedAt) return null;
+  const sources = record.aiSources ?? [];
   return {
     text: record.aiDraft,
-    sources: record.aiSources ?? [],
+    sources,
     gap: record.aiGap,
     model: record.aiModel,
     generatedAt: record.aiGeneratedAt?.toISOString() ?? null,
+    confidence: draftConfidence(sources),
   };
 }
 

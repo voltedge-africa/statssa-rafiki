@@ -15,6 +15,7 @@ const hits = [
     title: "CPI index",
     text: "Headline inflation was 3.2% in July 2026.",
     score: 0.9,
+    similarity: 0.91,
   },
   {
     chunkId: 9,
@@ -23,6 +24,7 @@ const hits = [
     title: "Other release",
     text: "A passage the model does not rely on.",
     score: 0.5,
+    similarity: 0.55,
   },
 ];
 
@@ -70,6 +72,7 @@ describe("MediaDraftService", () => {
     expect(result.text).toContain("[cpi-index#4]");
     expect(result.sources).toHaveLength(1);
     expect(result.sources[0]?.chunkId).toBe(4);
+    expect(result.sources[0]?.similarity).toBeCloseTo(0.91);
     expect(result.gap).toBeNull();
     expect(complete).toHaveBeenCalledTimes(1);
 

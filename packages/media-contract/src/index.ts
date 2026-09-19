@@ -196,6 +196,8 @@ export interface MediaDraftSource {
   source: string;
   title: string | null;
   snippet: string;
+  /** Retrieval similarity (0–1) of this passage to the request, when recorded. */
+  similarity?: number;
 }
 
 /**
@@ -209,6 +211,8 @@ export interface MediaAiDraft {
   gap: string | null;
   model: string | null;
   generatedAt: string | null;
+  /** Weakest recorded passage similarity; null when no passage carried a score. */
+  confidence: number | null;
 }
 
 /** A request as its owner sees it: no draft, no assignment, no internal notes. */
@@ -331,4 +335,130 @@ export function extractCitationIds(text: string): number[] {
     if (Number.isInteger(chunkId)) ids.add(chunkId);
   }
   return [...ids];
+}
+
+/**
+ * The weakest passage similarity that still counts as a green draft. Retrieval itself
+ * admits passages down to 0.8, so this sits deliberately above that floor: a draft that
+ * rests only on the weakest admitted passages escalates to a human rather than sailing
+ * through on a technicality.
+ */
+export const DRAFT_CONFIDENCE_MIN = 0.85;
+
+/**
+ * Confidence for a draft or approved response: the weakest recorded passage
+ * similarity, so one weak citation cannot hide behind strong ones. Null when no
+ * passage carried a similarity (older drafts, or the model cited nothing).
+ */
+export function draftConfidence(sources: MediaDraftSource[]): number | null {
+  const scores = sources
+    .map((source) => source.similarity)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (scores.length === 0) return null;
+  return Math.min(...scores);
+}
+
+export type MediaDraftCheckId =
+  | "grounded"
+  | "cited"
+  | "valid-citations"
+  | "fully-cited"
+  | "confidence";
+
+export interface MediaDraftCheck {
+  id: MediaDraftCheckId;
+  label: string;
+  detail: string;
+  passed: boolean;
+  /** A gate must pass before release; an advisory is shown but never blocks. */
+  severity: "gate" | "advisory";
+}
+
+export interface MediaDraftReview {
+  checks: MediaDraftCheck[];
+  /** True when every gate check passed. */
+  passed: boolean;
+}
+
+const MIN_CITED_SENTENCE_WORDS = 6;
+
+function sentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The post-generation enforcement gate. It runs before a draft or edited response
+ * can be released: it proves the text is grounded, cites at least one retrieved
+ * passage, and only cites passages that were actually retrieved. Uncited claim
+ * sentences and weak passage similarity are surfaced rather than silently ignored.
+ */
+export function reviewDraft(text: string | null, sources: MediaDraftSource[]): MediaDraftReview {
+  const body = text?.trim() ?? "";
+  const cited = extractCitationIds(body);
+  const known = new Set(sources.map((source) => source.chunkId));
+  const unknown = cited.filter((id) => !known.has(id));
+  const uncited = sentences(body).filter(
+    (sentence) =>
+      !/\[[^[\]#]+#\d+\]/.test(sentence) &&
+      sentence.split(/\s+/).length >= MIN_CITED_SENTENCE_WORDS,
+  );
+  const confidence = draftConfidence(sources);
+
+  const checks: MediaDraftCheck[] = [
+    {
+      id: "grounded",
+      label: "Grounded in approved sources",
+      detail:
+        body && sources.length > 0
+          ? `${sources.length} approved passage${sources.length === 1 ? "" : "s"} retrieved.`
+          : "No approved passage supports this text.",
+      passed: Boolean(body) && sources.length > 0,
+      severity: "gate",
+    },
+    {
+      id: "cited",
+      label: "Cites at least one passage",
+      detail:
+        cited.length > 0
+          ? `${cited.length} citation${cited.length === 1 ? "" : "s"} found.`
+          : "No [source#chunk] citation found in the text.",
+      passed: cited.length > 0,
+      severity: "gate",
+    },
+    {
+      id: "valid-citations",
+      label: "Every citation was retrieved",
+      detail:
+        unknown.length === 0
+          ? "All citations map to retrieved passages."
+          : `Cites passages that were not retrieved: ${unknown.join(", ")}.`,
+      passed: cited.length > 0 && unknown.length === 0,
+      severity: "gate",
+    },
+    {
+      id: "fully-cited",
+      label: "Every claim sentence is cited",
+      detail:
+        uncited.length === 0
+          ? "All claim sentences cite a passage."
+          : `${uncited.length} sentence${uncited.length === 1 ? "" : "s"} without a citation.`,
+      passed: uncited.length === 0,
+      severity: "advisory",
+    },
+    {
+      id: "confidence",
+      label: "Passage confidence is sufficient",
+      detail:
+        confidence === null
+          ? "Passage similarity was not recorded; gate skipped."
+          : `Weakest source passage is ${confidence.toFixed(2)} (minimum ${DRAFT_CONFIDENCE_MIN.toFixed(2)}).`,
+      passed: confidence === null || confidence >= DRAFT_CONFIDENCE_MIN,
+      severity: "gate",
+    },
+  ];
+
+  return { checks, passed: checks.every((check) => check.severity !== "gate" || check.passed) };
 }

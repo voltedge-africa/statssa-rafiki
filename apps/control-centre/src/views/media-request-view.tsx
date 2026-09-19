@@ -5,6 +5,8 @@ import {
   MEDIA_REQUEST_STATUSES,
   MEDIA_REQUEST_STATUS_LABELS,
   isTerminalStatus,
+  reviewDraft,
+  type MediaDraftCheck,
   type MediaEventVisibility,
   type MediaRequestStaffDetail,
   type MediaRequestStatus,
@@ -14,6 +16,7 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
+  Badge,
   Button,
   Card,
   CardContent,
@@ -50,6 +53,48 @@ import { useSession } from "../lib/session.tsx";
 const UPDATABLE_STATUSES = MEDIA_REQUEST_STATUSES.filter(
   (status) => status !== "approved" && status !== "rejected",
 );
+
+/**
+ * The post-generation enforcement gate as the reviewer sees it: proof that the
+ * response is grounded, cites retrieved passages and clears the confidence floor.
+ * Advisories never block approval; a failed gate disables the release action.
+ */
+function DraftGate({ checks, passed }: { checks: MediaDraftCheck[]; passed: boolean }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
+          Enforcement gate
+        </span>
+        <Badge variant={passed ? "secondary" : "destructive"}>
+          {passed ? "Ready to approve" : "Blocked"}
+        </Badge>
+      </div>
+      <ul className="mt-3 flex flex-col gap-2">
+        {checks.map((check) => (
+          <li key={check.id} className="flex items-start justify-between gap-3 text-sm">
+            <div className="flex flex-col">
+              <span className="font-medium">{check.label}</span>
+              <span className="text-xs text-muted-foreground">{check.detail}</span>
+            </div>
+            <Badge
+              variant="outline"
+              className={
+                check.passed
+                  ? "border-transparent bg-emerald-500/15 font-mono text-[10px] tracking-wide text-emerald-700 uppercase dark:text-emerald-400"
+                  : check.severity === "advisory"
+                    ? "border-transparent bg-amber-500/15 font-mono text-[10px] tracking-wide text-amber-700 uppercase dark:text-amber-400"
+                    : "font-mono text-[10px] tracking-wide uppercase"
+              }
+            >
+              {check.passed ? "pass" : check.severity === "advisory" ? "review" : "fail"}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function MediaRequestView({ reference }: { reference: string }) {
   const { session } = useSession();
@@ -190,6 +235,12 @@ export function MediaRequestView({ reference }: { reference: string }) {
     </div>
   ) : null;
 
+  const gateSources = detail?.draft?.sources ?? detail?.approvedSources ?? [];
+  const gate = reviewDraft(response, gateSources);
+  // The gate only blocks releasing an AI-derived response; manually drafted replies
+  // (an information gap, or a response typed from scratch) stay with the official.
+  const gateBlocks = Boolean(detail?.draft?.text) && !gate.passed;
+
   return (
     <section className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -312,9 +363,11 @@ export function MediaRequestView({ reference }: { reference: string }) {
                       </FieldDescription>
                     </Field>
 
+                    <DraftGate checks={gate.checks} passed={gate.passed} />
+
                     <div className="flex flex-wrap gap-2">
                       <Button
-                        disabled={busy || response.trim().length < 10}
+                        disabled={busy || response.trim().length < 10 || gateBlocks}
                         onClick={() => void handleApprove()}
                       >
                         {busy ? "Saving…" : "Approve and release"}
