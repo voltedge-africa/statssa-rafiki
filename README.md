@@ -91,6 +91,11 @@ cp apps/control-centre/.env.example apps/control-centre/.env
 | `AUTH_ISSUER`             | `apps/api`                                                                       | derived from the request host                         | Override the issuer URL. Required in production.                                                                                    |
 | `API_ALLOWED_ORIGINS`     | `apps/api`                                                                       | reflect any origin in dev, none in production         | Browser origins allowed by CORS (comma-separated `scheme://host`).                                                                  |
 | `RAG_DATABASE_URL`        | `apps/api`                                                                       | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_rag`  | Postgres database holding the RAG index (needs the `pgvector` extension).                                                           |
+| `FACT_DATABASE_URL`       | `apps/api`                                                                       | `postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_fact` | Postgres database holding the fact store (`factstore` schema, loaded from the GHS corpus).                                          |
+| `OPENCODE_API_KEY`        | `apps/api`                                                                       | –                                                     | OpenCode Go key; without it the agent is unavailable (`/api/status` reports `hasEnvKey:false`).                                     |
+| `PI_MODEL`                | `apps/api`                                                                       | `muse-spark-1.3-contributor`                          | Main agent model.                                                                                                                   |
+| `PI_WRAPPER_MODEL`        | `apps/api`                                                                       | `deepseek-v4.1-flash`                                 | Small reply-formatter model for `/api/chat/final` (no tools, no data access). Must be a pi-ai catalog id.                           |
+| `PI_NORMALIZER_MODEL`     | `apps/api`                                                                       | `PI_WRAPPER_MODEL`                                    | Small query-normalizer model for `/api/chat/final` (no tools).                                                                      |
 | `VITE_API_BASE`           | `apps/public-portal`, `apps/website`, `apps/media-portal`, `apps/control-centre` | `http://localhost:3001`                               | API base the portal calls (website, media portal and control centre proxy `/api/popia/*` and `/api/media/*` through their servers). |
 | `VITE_CONTROL_CENTRE_URL` | `apps/website`, `apps/media-portal`                                              | derived from the browser hostname, port 3006          | Where Staff/Admin are sent after signing in, and the review desk linked from the media room header.                                 |
 | `VITE_WEBSITE_URL`        | `apps/control-centre`, `apps/media-portal`                                       | derived from the browser hostname, port 3002          | Public site linked from the control centre and media room.                                                                          |
@@ -151,7 +156,7 @@ room lives at <http://localhost:3004>.
 The whole stack can run in Docker instead of six terminals. `docker-compose.yml` at the repo root
 starts Postgres (pgvector), Mailpit, the auth issuer (Bun), the NestJS API, all four front-ends
 (`vp preview` with their OAuth middleware), applies the Drizzle migrations and seeds the RAG
-index — in dependency order, with healthchecks. If OpenCode chat is needed, export
+index and fact store — in dependency order, with healthchecks. If OpenCode chat is needed, export
 `OPENCODE_API_KEY` before starting.
 
 ```bash
@@ -160,7 +165,8 @@ docker compose ps              # wait for everything to report healthy
 docker compose logs -f api     # or: vp run docker:logs
 docker compose down            # or: vp run docker:down (keeps data)
 docker compose down -v         # or: vp run docker:reset (wipes DB, RAG index, auth keys)
-docker compose run --rm rag-init   # or: vp run docker:rag (re-index the corpus)
+docker compose run --rm rag-init        # or: vp run docker:rag (re-index the corpus)
+docker compose run --rm factstore-init  # reload the fact store after a corpus change
 ```
 
 Once everything is healthy, use the same URLs as native development: website
@@ -183,9 +189,11 @@ How it fits together:
   (`vp run dev:all`, `vp run db:up`) before `docker compose up`. Postgres and Mailpit listen on
   `127.0.0.1` only — the DB and dev mail stay off the LAN/tailnet, same as native dev.
 - **One-shot jobs** — `migrate` (drizzle-kit) runs before the issuer starts; `rag-init` caches
-  the embedding model and indexes `apps/api/corpus` into `rafiki_rag`. Both are idempotent, and
-  the API does not block on `rag-init`: if the model download fails (offline first run), the API
-  still boots and degrades to information-gap answers until `vp run docker:rag` succeeds.
+  the embedding model and indexes `apps/api/corpus` into `rafiki_rag`; `factstore-init` derives the
+  published tables from the corpus and loads them into `rafiki_fact`. All are idempotent, and the
+  API does not block on them: if the model download fails (offline first run) the RAG degrades to
+  information-gap answers until `vp run docker:rag` succeeds, and an empty fact store is supported
+  (the API logs `Fact store is empty` and number questions fall back to corpus text).
 - **State** — named volumes keep Postgres data, the auth issuer's accounts/signing keys
   (`.openauth-persist.json`) and the cached embedding model across restarts.
 
@@ -337,39 +345,40 @@ docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_fact   # the fact 
 `Authorization: Bearer <access token>` header; the token is verified against the issuer's JWKS and
 its subject (`{ id, role }`) is validated against the shared contract.
 
-| Route                                        | Access        | Returns                                                                                  |
-| -------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
-| `GET /health`                                | public        | `{ status, uptime }`                                                                     |
-| `GET /me`                                    | any role      | the caller's subject                                                                     |
-| `GET /admin/ping`                            | Admin         | role-guard example                                                                       |
-| `POST /popia/requests`                       | public        | submit a request; a token links it to account                                            |
-| `POST /popia/requests/track`                 | public        | track by reference + email                                                               |
-| `GET /popia/requests/mine`                   | any role      | requests linked to the caller                                                            |
-| `GET /popia/requests`                        | Staff, Admin  | case queue (`status`, `type`, `assigned`, `q`)                                           |
-| `GET /popia/requests/:reference`             | Staff, Admin  | case file with the full timeline                                                         |
-| `PATCH /popia/requests/:reference`           | Staff, Admin  | status, assignment or resolution                                                         |
-| `POST /popia/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                       |
-| `POST /media/requests`                       | any signed-in | submit a media fact-check request (starts AI drafting)                                   |
-| `GET /media/requests/mine`                   | any signed-in | the caller's media requests                                                              |
-| `GET /media/requests/mine/:reference`        | owner         | request tracking plus the approved response                                              |
-| `POST /media/requests/:reference/withdraw`   | owner         | withdraw an open request                                                                 |
-| `GET /media/requests`                        | Staff, Admin  | media queue (`status`, `assigned`, `q`)                                                  |
-| `GET /media/requests/:reference`             | Staff, Admin  | media case file including the AI draft                                                   |
-| `PATCH /media/requests/:reference`           | Staff, Admin  | status, assignment or a lifecycle note                                                   |
-| `POST /media/requests/:reference/approve`    | Staff, Admin  | approve and release the reviewed response                                                |
-| `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                                                  |
-| `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                                                               |
-| `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                       |
-| `GET /api/status`                            | public        | provider/model availability                                                              |
-| `POST /api/chat`                             | public        | SSE chat stream (optional auth tags the portal role)                                     |
-| `POST /api/reset`                            | public        | forget a chat session                                                                    |
-| `GET /api/telemetry`                         | Admin         | live in-memory spans (snapshot)                                                          |
-| `GET /api/telemetry/stream`                  | Admin         | live in-memory spans (SSE)                                                               |
-| `POST /api/telemetry/clear`                  | Admin         | clear the in-memory span buffer                                                          |
-| `GET /admin/ai/usage`                        | Admin         | AI model governance rollup (`from`, `to`, `model`, `feature`, `role`, `tool`, `session`) |
-| `GET /admin/ai/model-calls`                  | Admin         | paginated model calls (`limit`, `offset` + filters)                                      |
-| `GET /admin/ai/tool-calls`                   | Admin         | paginated tool calls (`limit`, `offset` + filters)                                       |
-| `GET /admin/ai/sessions/:sessionId`          | Admin         | every persisted span for one session                                                     |
+| Route                                        | Access        | Returns                                                                                   |
+| -------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------- |
+| `GET /health`                                | public        | `{ status, uptime }`                                                                      |
+| `GET /me`                                    | any role      | the caller's subject                                                                      |
+| `GET /admin/ping`                            | Admin         | role-guard example                                                                        |
+| `POST /popia/requests`                       | public        | submit a request; a token links it to account                                             |
+| `POST /popia/requests/track`                 | public        | track by reference + email                                                                |
+| `GET /popia/requests/mine`                   | any role      | requests linked to the caller                                                             |
+| `GET /popia/requests`                        | Staff, Admin  | case queue (`status`, `type`, `assigned`, `q`)                                            |
+| `GET /popia/requests/:reference`             | Staff, Admin  | case file with the full timeline                                                          |
+| `PATCH /popia/requests/:reference`           | Staff, Admin  | status, assignment or resolution                                                          |
+| `POST /popia/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                        |
+| `POST /media/requests`                       | any signed-in | submit a media fact-check request (starts AI drafting)                                    |
+| `GET /media/requests/mine`                   | any signed-in | the caller's media requests                                                               |
+| `GET /media/requests/mine/:reference`        | owner         | request tracking plus the approved response                                               |
+| `POST /media/requests/:reference/withdraw`   | owner         | withdraw an open request                                                                  |
+| `GET /media/requests`                        | Staff, Admin  | media queue (`status`, `assigned`, `q`)                                                   |
+| `GET /media/requests/:reference`             | Staff, Admin  | media case file including the AI draft                                                    |
+| `PATCH /media/requests/:reference`           | Staff, Admin  | status, assignment or a lifecycle note                                                    |
+| `POST /media/requests/:reference/approve`    | Staff, Admin  | approve and release the reviewed response                                                 |
+| `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                                                   |
+| `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                                                                |
+| `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                        |
+| `GET /api/status`                            | public        | provider/model availability                                                               |
+| `POST /api/chat`                             | public        | SSE chat stream (optional auth tags the portal role)                                      |
+| `POST /api/chat/final`                       | public        | one non-streaming answer for automated clients (query normalizer → RAG agent → formatter) |
+| `POST /api/reset`                            | public        | forget a chat session                                                                     |
+| `GET /api/telemetry`                         | Admin         | live in-memory spans (snapshot)                                                           |
+| `GET /api/telemetry/stream`                  | Admin         | live in-memory spans (SSE)                                                                |
+| `POST /api/telemetry/clear`                  | Admin         | clear the in-memory span buffer                                                           |
+| `GET /admin/ai/usage`                        | Admin         | AI model governance rollup (`from`, `to`, `model`, `feature`, `role`, `tool`, `session`)  |
+| `GET /admin/ai/model-calls`                  | Admin         | paginated model calls (`limit`, `offset` + filters)                                       |
+| `GET /admin/ai/tool-calls`                   | Admin         | paginated tool calls (`limit`, `offset` + filters)                                        |
+| `GET /admin/ai/sessions/:sessionId`          | Admin         | every persisted span for one session                                                      |
 
 - The issuer URL is derived from the request host and `AUTH_PORT`, so it works locally and over a
   tailnet. Set `AUTH_ISSUER` to override; it is required in production.
@@ -390,9 +399,51 @@ token and cost totals, latency and error rates.
 Recording is deliberately non-verbose and POPIA-conscious: spans hold model/provider/operation
 metadata, tool names, token counts, cost, latency and status, but never prompt, completion or
 tool-output content, and never the user's identity. Each row is tagged with the originating feature
-(`chat`, `media_draft`) and portal role (`Press`, `Staff`, `Admin`, `anonymous`) only. The live
+(`chat`, `media_draft`, `openwa_reply`, `openwa_normalize`) and portal role
+(`Press`, `Staff`, `Admin`, `anonymous`) only. The live
 `/api/telemetry` buffer is Admin-only because it spans all sessions and `clear` mutates shared state;
 retention/pruning is intentionally not implemented yet (the `created_at` column is indexed for it).
+
+---
+
+## WhatsApp bridge (OpenWA)
+
+[`tools/openwa-mention-relay`](tools/openwa-mention-relay) connects an
+[OpenWA](https://docs.open-wa.org/) WhatsApp session to the public chat API: when the bot is
+@mentioned in a group, it sends the mentioned message — plus the message being replied to, when the
+tag is a reply — to `POST /api/chat/final`, and posts the single returned answer back into the
+group, quoting the trigger and tagging whoever tagged it.
+
+- It subscribes to one session's `message.received` events over OpenWA's Socket.IO `/events` stream.
+- `POST /api/chat/final` runs the same public RAG agent as the website, behind a small **query
+  normalizer** (maps informal/slang wording onto the corpus vocabulary and rejects clearly
+  out-of-scope questions) and a small **reply formatter** (turns the agent's raw output into one
+  natural reply).
+- Answers longer than WhatsApp's 4096-character limit are split into follow-up messages, and
+  `show_table` results are rendered as padded monospace blocks.
+
+**Public only, by design.** The bridge is an automated member of the public: it calls a `@Public()`
+route, so no user is ever attached and it cannot hold a Staff/Admin/Media role; the agent exposes
+only public corpus and published-table tools; and both wrapper models are given no tools and no data
+access. It performs no access-control logic of its own — the API's public path is the boundary.
+
+Prerequisites: the OpenWA stack running (e.g. <http://localhost:2785>, a connected session, and the
+bot in the target group) and the API running (`vp run dev:api`) with `OPENCODE_API_KEY` set.
+
+```bash
+cp tools/openwa-mention-relay/.env.example tools/openwa-mention-relay/.env   # set session + group
+vp -C tools/openwa-mention-relay run start                                  # run the relay
+```
+
+Configuration is environment-based — see
+[`tools/openwa-mention-relay/.env.example`](tools/openwa-mention-relay/.env.example). The OpenWA API
+key is read from `OPENWA_API_KEY`, `OPENWA_KEY_FILE`, the bind-mounted `OpenWA/data/.api-key`, or
+`docker exec` on the gateway container.
+
+```bash
+vp -C tools/openwa-mention-relay test       # unit tests (node:test)
+vp -C tools/openwa-mention-relay run e2e    # end-to-end, needs a running API on :3001
+```
 
 ---
 
@@ -468,6 +519,10 @@ vp run -r build  # build the workspace
 vp run ready     # fmt + lint + test + build (the full pre-push gate)
 ```
 
+`vp run -r test` runs each workspace package's `test` script, which includes the OpenWA relay's
+`node --test` suite. The bridge's end-to-end check needs the API running:
+`vp -C tools/openwa-mention-relay run e2e`.
+
 ---
 
 ## Project layout
@@ -518,4 +573,9 @@ packages/
   media-ui/           # media API client, draft card and reference list (shared)
   ui/
   utils/
+tools/
+  openwa-mention-relay/  # WhatsApp bridge: group @mentions -> /api/chat/final -> group reply
+    relay.mjs            # Socket.IO listener, prompt composition and WhatsApp formatting
+    relay-tests.mjs      # node:test unit tests for the pure helpers
+    e2e.mjs              # end-to-end check against a running API
 ```
