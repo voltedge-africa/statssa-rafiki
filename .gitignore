@@ -25,3 +25,7 @@ dist-ssr
 
 # AI agent worktrees
 .claude/worktrees/
+
+# Local OpenWA clone (its own repo and toolchain; not part of this workspace, and its
+# uninstalled dashboard deps break repo-wide `vp check`/`vp test` scanning)
+OpenWA/
