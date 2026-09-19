@@ -57,7 +57,14 @@ vp run db:migrate
 # 4. (Optional, for the API's grounded answers) cache the embedding model and index the corpus
 vp run rag:model
 vp run rag:ingest
+
+# 5. (Optional) derive the fact-store tables from the GHS corpus and load them into rafiki_fact
+vp run factstore:setup
 ```
+
+> Steps 4 and 5 are the two halves of the grounded-answers data. Skipping step 5 is supported —
+> the API boots and the agent falls back to corpus text for exact figures — but it logs a
+> `Fact store is empty` warning at startup, and number questions will not use the SQL pipeline.
 
 `vp install` also runs `vp config` (git hooks) via the `prepare` script.
 
@@ -267,27 +274,40 @@ docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_auth
 
 ---
 
-## Corpus (RAG)
+## Corpus & fact store (RAG)
 
-The API answers statistics questions from a local corpus using hybrid keyword and vector search
-backed by Postgres (`rafiki_rag` on the same server as auth, with the `pgvector` extension).
+The API answers statistics questions from two grounded sources: a local **corpus** searched with
+hybrid keyword and vector search (Postgres `rafiki_rag`, with the `pgvector` extension) and a
+**fact store** of published tables the agent queries with read-only SQL (Postgres `rafiki_fact`,
+schema `factstore`). Both live on the same Postgres server as auth.
 
 ```bash
-vp run rag:model   # one-time: download the local embedding model (only online step)
-vp run rag:ingest  # embed and index apps/api/corpus into Postgres
+# Text layer (vector search over the corpus)
+vp run rag:model        # one-time: download the local embedding model (only online step)
+vp run rag:ingest       # embed and index apps/api/corpus into rafiki_rag
+
+# Fact store (exact figures via SQL)
+vp run factstore:setup  # derive the tables from the corpus, then load them into rafiki_fact
 ```
 
 - Source documents live in [`apps/api/corpus`](apps/api/corpus) (`.txt`, `.md`, `.json`,
-  `.jsonl`); a sample CPI extract ships under `corpus/sample`.
+  `.jsonl`); the current corpus is the Stats SA **General Household Survey (GHS) 2025** release.
 - Re-run `vp run rag:ingest` after changing the corpus. Files are keyed by content hash, so
   unchanged documents are skipped and changed ones are replaced atomically.
-- `pgvector` is enabled on first ingest. The auth database (`rafiki_auth`) and the RAG database
-  (`rafiki_rag`) share the one Postgres container.
+- `vp run factstore:setup` derives the curated tables from the GHS markdown (via
+  `apps/api/src/agent/factstore-derive.ts`, using the `TABLE_SPECS` in `factstore-parse.ts`) and
+  loads them, dropping and recreating each table. Re-run it whenever the corpus changes.
+- An **empty fact store is supported**: the API boots and the agent falls back to corpus text for
+  exact figures, but it logs `Fact store is empty` at startup and number questions will not be
+  answered from SQL. If you see that warning, run `vp run factstore:setup`.
+- `pgvector` is enabled on first ingest. `rafiki_auth`, `rafiki_rag` and `rafiki_fact` share the
+  one Postgres container.
 
-Raw SQL access to the index:
+Raw SQL access to either store:
 
 ```bash
-docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_rag
+docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_rag    # the vector index
+docker exec -it rafiki-auth-postgres psql -U rafiki -d rafiki_fact   # the fact store
 ```
 
 ---

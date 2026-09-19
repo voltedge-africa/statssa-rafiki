@@ -27,6 +27,7 @@
     "rag:ingest": "vp run api#rag:ingest",
     "factstore:derive": "vp run api#factstore:derive",
     "factstore:load": "vp run api#factstore:load",
+    "factstore:setup": "vp run api#factstore:derive && vp run api#factstore:load",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
