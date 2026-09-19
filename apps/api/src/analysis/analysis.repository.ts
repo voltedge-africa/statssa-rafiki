@@ -80,6 +80,19 @@ export class AnalysisRepository implements OnModuleDestroy {
     return row;
   }
 
+  /** The projection every read and the insert share, so the view shape cannot drift. */
+  private get columns() {
+    return this.sql`
+      id, title, sources, focus, content, "references",
+      verification_status AS "verificationStatus",
+      unverified_numbers AS "unverifiedNumbers",
+      ai_model AS "aiModel",
+      created_by AS "createdBy",
+      created_by_label AS "createdByLabel",
+      created_at AS "createdAt"
+    `;
+  }
+
   async insert(brief: NewAnalysisBrief): Promise<AnalysisBriefRecord> {
     const [row] = await this.sql<AnalysisBriefRecord[]>`
       INSERT INTO analysis_briefs (
@@ -99,13 +112,7 @@ export class AnalysisRepository implements OnModuleDestroy {
         ${brief.createdBy},
         ${brief.createdByLabel}
       )
-      RETURNING id, title, sources, focus, content, "references",
-                verification_status AS "verificationStatus",
-                unverified_numbers AS "unverifiedNumbers",
-                ai_model AS "aiModel",
-                created_by AS "createdBy",
-                created_by_label AS "createdByLabel",
-                created_at AS "createdAt"
+      RETURNING ${this.columns}
     `;
     if (!row) throw new Error("insert returned no analysis brief");
     return row;
@@ -113,13 +120,7 @@ export class AnalysisRepository implements OnModuleDestroy {
 
   async get(id: string): Promise<AnalysisBriefRecord | undefined> {
     const [row] = await this.sql<AnalysisBriefRecord[]>`
-      SELECT id, title, sources, focus, content, "references",
-             verification_status AS "verificationStatus",
-             unverified_numbers AS "unverifiedNumbers",
-             ai_model AS "aiModel",
-             created_by AS "createdBy",
-             created_by_label AS "createdByLabel",
-             created_at AS "createdAt"
+      SELECT ${this.columns}
       FROM analysis_briefs
       WHERE id = ${id}
     `;
@@ -131,13 +132,7 @@ export class AnalysisRepository implements OnModuleDestroy {
       ? this.sql`WHERE (title ILIKE ${`%${input.q}%`} OR created_by_label ILIKE ${`%${input.q}%`})`
       : this.sql``;
     const rows = await this.sql<(AnalysisBriefRecord & { total: number })[]>`
-      SELECT id, title, sources, focus, content, "references",
-             verification_status AS "verificationStatus",
-             unverified_numbers AS "unverifiedNumbers",
-             ai_model AS "aiModel",
-             created_by AS "createdBy",
-             created_by_label AS "createdByLabel",
-             created_at AS "createdAt",
+      SELECT ${this.columns},
              COUNT(*) OVER()::int AS total
       FROM analysis_briefs
       ${filter}

@@ -118,8 +118,8 @@ export async function getDocument(
   };
 }
 
-/** A document as the analysis builder lists it: identity and size, not its text. */
-export interface IndexedDocumentSummary {
+/** A document row as `listDocuments` returns it; the wire shape lives in the brief contract. */
+export interface IndexedDocumentRow {
   source: string;
   title: string | null;
   characters: number;
@@ -127,8 +127,8 @@ export interface IndexedDocumentSummary {
 }
 
 /** Every indexed document, alphabetically by source. */
-export async function listDocuments(db: RagDatabase): Promise<IndexedDocumentSummary[]> {
-  return db<IndexedDocumentSummary[]>`
+export async function listDocuments(db: RagDatabase): Promise<IndexedDocumentRow[]> {
+  return db<IndexedDocumentRow[]>`
     SELECT d.source AS source, d.title AS title,
            char_length(d.text)::int AS characters,
            COUNT(c.id)::int AS chunks

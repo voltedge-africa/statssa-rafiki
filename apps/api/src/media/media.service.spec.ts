@@ -182,6 +182,7 @@ class FakeDraftService {
       { chunkId: 9, source: "ghs-2025-media-release.md", title: "Other", snippet: "not cited" },
     ],
     gap: null,
+    gapKind: null,
     model: "test/model",
   };
 
@@ -302,6 +303,7 @@ describe("MediaService", () => {
       text: null,
       sources: [],
       gap: "No approved Stats SA source covers this claim.",
+      gapKind: "grounding",
       model: "test/model",
     };
 
@@ -320,6 +322,7 @@ describe("MediaService", () => {
       text: null,
       sources: [],
       gap: "No approved Stats SA source covers this claim.",
+      gapKind: "grounding",
       model: "test/model",
     };
 
@@ -335,6 +338,22 @@ describe("MediaService", () => {
       }),
     );
     expect(built.labelling.labelPending).toHaveBeenCalled();
+  });
+
+  it("does not log a provider outage as a knowledge gap", async () => {
+    const built = makeService();
+    built.drafts.result = {
+      text: null,
+      sources: [],
+      gap: "Draft generation unavailable: provider down.",
+      gapKind: "provider",
+      model: "test/model",
+    };
+
+    await built.service.submit(submission, press);
+    await waitForStatus(built.fake, "information_gap");
+
+    expect(built.gaps.record).not.toHaveBeenCalled();
   });
 
   it("hides the AI draft from the requester and shows it to reviewers", async () => {
@@ -440,6 +459,7 @@ describe("MediaService", () => {
       text: null,
       sources: [],
       gap: "No approved Stats SA source covers this claim.",
+      gapKind: "grounding",
       model: "test/model",
     };
     await service.submit(submission, press);
@@ -457,6 +477,7 @@ describe("MediaService", () => {
         },
       ],
       gap: null,
+      gapKind: null,
       model: "test/model",
     } satisfies MediaDraftResult;
 

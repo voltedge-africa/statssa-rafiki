@@ -8,18 +8,11 @@ import type { AgentStatus, ChatEvent, ChatRequest } from "@voltedge/agent-contra
 import { GovernanceService } from "../admin/governance.service.ts";
 import { hasProviderKey, MODEL, PROVIDER } from "./config.ts";
 import { guardedFetch } from "./offline.ts";
+import { isRefusalAnswer, REFUSAL_ANSWER } from "./refusal.ts";
 import { SpanHandle, TelemetryService } from "./telemetry.service.ts";
 import { TOOLS } from "./tools.ts";
 import { extractUiBlock } from "./ui/blocks.ts";
 import { collectToolGroundTruth, extractNumbers, verifyNumbers } from "./verifier.ts";
-
-/**
- * The exact answer the system prompt mandates when the approved sources cannot
- * support a response. Shared so the chat controller can detect a refusal and
- * record it in the knowledge-gap log.
- */
-export const REFUSAL_ANSWER =
-  "The provided Stats SA documentation does not contain this information.";
 
 export const SYSTEM_PROMPT = [
   "You are Rafiki, an assistant for Statistics South Africa (Stats SA).",
@@ -578,7 +571,7 @@ export class AgentService implements OnModuleInit {
             ? { status: "skipped" as const, unverified: [] as string[] }
             : verifyNumbers(answerText, groundTruthNumbers);
         onEvent({ type: "verification", ...verification });
-        refused = answerText.includes(REFUSAL_ANSWER);
+        refused = isRefusalAnswer(answerText);
       }
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);

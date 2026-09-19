@@ -3,7 +3,7 @@ import {
   listDocuments,
   openDatabase,
   type IndexedDocument,
-  type IndexedDocumentSummary,
+  type IndexedDocumentRow,
   type RagDatabase,
 } from "./db.ts";
 
@@ -26,7 +26,7 @@ export async function retrieveDocument(source: string): Promise<IndexedDocument 
 }
 
 /** Every indexed document, for the analysis builder's document picker. */
-export async function listIndexedDocuments(): Promise<IndexedDocumentSummary[]> {
+export async function listIndexedDocuments(): Promise<IndexedDocumentRow[]> {
   try {
     return await listDocuments(database());
   } catch (error) {

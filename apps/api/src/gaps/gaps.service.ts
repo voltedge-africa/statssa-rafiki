@@ -134,6 +134,7 @@ export class GapsService {
         await this.repo.addQueryToCategory(
           nearest.id,
           runningMean(parseVector(nearest.centroid), nearest.queryCount, embedding),
+          nearest.queryCount,
         );
       } else {
         categoryId = randomUUID();

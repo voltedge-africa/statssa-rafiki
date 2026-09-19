@@ -63,6 +63,7 @@ describe("MediaDraftService", () => {
 
     expect(result.text).toBeNull();
     expect(result.gap).toContain("confidence");
+    expect(result.gapKind).toBe("grounding");
     expect(complete).not.toHaveBeenCalled();
   });
 
@@ -84,6 +85,7 @@ describe("MediaDraftService", () => {
 
     expect(result.text).toBeNull();
     expect(result.gap).toContain("No approved Stats SA source");
+    expect(result.gapKind).toBe("grounding");
     expect(complete).not.toHaveBeenCalled();
   });
 
@@ -95,6 +97,7 @@ describe("MediaDraftService", () => {
 
     expect(result.text).toBeNull();
     expect(result.gap).toContain("RAG index unavailable");
+    expect(result.gapKind).toBe("provider");
   });
 
   it("returns the draft with only the cited passages as references", async () => {
@@ -168,6 +171,7 @@ describe("MediaDraftService", () => {
 
     expect(result.text).toBeNull();
     expect(result.gap).toContain("not the 2% claim");
+    expect(result.gapKind).toBe("grounding");
   });
 
   it("surfaces a provider error as a gap", async () => {
@@ -183,6 +187,7 @@ describe("MediaDraftService", () => {
 
     expect(result.text).toBeNull();
     expect(result.gap).toContain("Draft generation unavailable");
+    expect(result.gapKind).toBe("provider");
   });
 
   it("consults the fact store when no passage is relevant but tables are loaded", async () => {

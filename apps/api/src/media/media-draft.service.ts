@@ -40,8 +40,16 @@ export interface MediaDraftResult {
   text: string | null;
   sources: MediaDraftSource[];
   gap: string | null;
+  /**
+   * Why there is no draft: `grounding` when the approved sources cannot support
+   * one (the knowledge-gap log's concern), `provider` when the model or index
+   * was unavailable (an operational failure, not a coverage gap).
+   */
+  gapKind: MediaDraftGapKind | null;
   model: string | null;
 }
+
+export type MediaDraftGapKind = "grounding" | "provider";
 
 function toSource(hit: RagHit): MediaDraftSource {
   return {
@@ -128,7 +136,7 @@ export class MediaDraftService {
       hits = await retrieve(query, DRAFT_TOP_K);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { text: null, sources: [], gap: message, model: null };
+      return { text: null, sources: [], gap: message, gapKind: "provider", model: null };
     }
 
     let factStoreAvailable = false;
@@ -145,6 +153,7 @@ export class MediaDraftService {
         text: null,
         sources: [],
         gap: "No approved Stats SA source in the index covers this claim or question.",
+        gapKind: "grounding",
         model: null,
       };
     }
@@ -162,6 +171,7 @@ export class MediaDraftService {
           text: null,
           sources: [],
           gap: `Retrieval confidence ${best.toFixed(2)} is below the escalation threshold ${confidenceMin.toFixed(2)}.`,
+          gapKind: "grounding",
           model: null,
         };
       }
@@ -176,11 +186,23 @@ export class MediaDraftService {
 
     if (error) {
       this.logger.warn(`Draft generation failed: ${error}`);
-      return { text: null, sources: [], gap: `Draft generation unavailable: ${error}`, model };
+      return {
+        text: null,
+        sources: [],
+        gap: `Draft generation unavailable: ${error}`,
+        gapKind: "provider",
+        model,
+      };
     }
 
     if (!text) {
-      return { text: null, sources: [], gap: "The assistant returned an empty draft.", model };
+      return {
+        text: null,
+        sources: [],
+        gap: "The assistant returned an empty draft.",
+        gapKind: "provider",
+        model,
+      };
     }
 
     if (text.startsWith(GAP_PREFIX)) {
@@ -189,6 +211,7 @@ export class MediaDraftService {
         text: null,
         sources: [],
         gap: reason || "Approved sources do not support a response to this request.",
+        gapKind: "grounding",
         model,
       };
     }
@@ -199,6 +222,6 @@ export class MediaDraftService {
     const citedSources = [...citedPassages, ...citedTables];
     const sources = citedSources.length > 0 ? citedSources : hits.map(toSource);
 
-    return { text, sources, gap: null, model };
+    return { text, sources, gap: null, gapKind: null, model };
   }
 }

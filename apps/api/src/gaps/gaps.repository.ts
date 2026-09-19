@@ -1,14 +1,10 @@
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import type { GapLabelSource, GapSurface } from "@voltedge/gaps-contract";
 import postgres, { type Sql } from "postgres";
+import { vectorLiteral } from "../agent/rag/db.ts";
 import { orDefault } from "../env.ts";
 
 const DEFAULT_DATABASE_URL = "postgres://rafiki:rafiki@127.0.0.1:5432/rafiki_auth";
-
-/** pgvector accepts a bracketed string literal, e.g. `[0.1,0.2,...]`. */
-function vectorLiteral(values: Float32Array | number[]): string {
-  return `[${Array.from(values).join(",")}]`;
-}
 
 export interface NewGapQuery {
   id: string;
@@ -85,9 +81,9 @@ export interface GapAggregates {
 }
 
 /**
- * Read/write SQL over the knowledge-gap tables in `rafiki_auth`. The centroid
- * math runs in Postgres (`addQueryToCategory`), so concurrent writers cannot
- * clobber each other's running mean.
+ * Read/write SQL over the knowledge-gap tables in `rafiki_auth`. Category
+ * clustering is approximate by design: a concurrent writer can win the centroid
+ * update (guarded below), but every query is still recorded.
  */
 @Injectable()
 export class GapsRepository implements OnModuleDestroy {
@@ -137,18 +133,25 @@ export class GapsRepository implements OnModuleDestroy {
   }
 
   /**
-   * Replace a category's centroid with the caller-computed running mean. The
-   * mean is computed in the service because pgvector has no scalar arithmetic;
-   * the count bump and timestamp stay atomic with the write.
+   * Replace a category's centroid with the caller-computed running mean, but
+   * only while the row still carries the count the mean was computed from. A
+   * concurrent record that already moved the count wins, so no writer clobbers
+   * a fresher centroid. Returns false when the guard missed; the caller treats
+   * that as "another writer won" and keeps the query row either way.
    */
-  async addQueryToCategory(id: string, centroid: Float32Array): Promise<void> {
-    await this.sql`
+  async addQueryToCategory(
+    id: string,
+    centroid: Float32Array,
+    expectedCount: number,
+  ): Promise<boolean> {
+    const result = await this.sql`
       UPDATE gap_categories
       SET centroid = ${vectorLiteral(centroid)}::vector,
           query_count = query_count + 1,
           last_seen = now()
-      WHERE id = ${id}
+      WHERE id = ${id} AND query_count = ${expectedCount}
     `;
+    return result.count > 0;
   }
 
   async pendingCategories(limit: number): Promise<{ id: string; label: string }[]> {

@@ -632,10 +632,11 @@ export class MediaService {
       );
     }
 
-    if (result.gap) {
+    if (result.gapKind === "grounding") {
       // The claim could not be answered from approved sources: log it for the
-      // knowledge-gap desk. Fire-and-forget — a log failure must not affect the
-      // requester's case, and the labelling sweep is best-effort.
+      // knowledge-gap desk. Provider/index failures are operational, not coverage
+      // gaps, so they are deliberately not logged. Fire-and-forget — a log failure
+      // must not affect the requester's case, and labelling is best-effort.
       void this.gaps
         .record({
           surface: "media_draft",

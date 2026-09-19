@@ -464,14 +464,17 @@ on the brief. Citations open the indexed document beside the article. Briefs liv
 [`packages/brief-contract`](packages/brief-contract).
 
 **Knowledge gaps** (`/gaps`) — every query the approved sources could not answer is logged:
-chat refusals from the public portal and `information_gap` media fact-check requests. Each query
-is embedded with the local retrieval model and clustered into a topic category (for example, a
-run of outlets asking about the same uncovered statistic lands in one category); Staff/Admin can
-read the rollup, filter by window and drill into the underlying queries. Categories carry a
-deterministic label immediately, upgraded by a best-effort model label. No user identity is
-stored for chat gaps (role and origin host only); media rows point at their request. Gap data
-lives in `rafiki_auth.gap_queries` + `gap_categories` (pgvector centroid); the vocabulary and
-schemas are in [`packages/gaps-contract`](packages/gaps-contract).
+chat refusals from the public portal and media fact-check requests parked as `information_gap`
+for coverage reasons (provider or index failures are not coverage gaps and stay out of the log).
+Each query is embedded with the local retrieval model and clustered into a topic category (for
+example, a run of outlets asking about the same uncovered statistic lands in one category);
+Staff/Admin can read the rollup including the surface split, filter by window and drill into the
+underlying queries. Categories carry a deterministic label immediately, upgraded by a
+best-effort model label. Recording only needs the local embedding model, never the generation
+model. The query text itself is stored so the desk can see what was asked; chat gaps store no
+user identity (role and origin host only) and media rows point at their request. Gap data lives
+in `rafiki_auth.gap_queries` + `gap_categories` (pgvector centroid); the vocabulary and schemas
+are in [`packages/gaps-contract`](packages/gaps-contract).
 
 ---
 

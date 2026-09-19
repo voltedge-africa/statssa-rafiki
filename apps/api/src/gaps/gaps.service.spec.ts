@@ -58,6 +58,7 @@ describe("GapsService.record", () => {
     expect(repo.addQueryToCategory).toHaveBeenCalledWith(
       "cat-1",
       new Float32Array([0.25, 0.75, 0]),
+      3,
     );
     expect(repo.createCategory).not.toHaveBeenCalled();
     expect(repo.insertQuery).toHaveBeenCalledWith(

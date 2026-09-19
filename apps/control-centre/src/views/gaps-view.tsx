@@ -197,7 +197,7 @@ export function GapsView() {
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Gaps per day</CardTitle>
@@ -220,6 +220,36 @@ export function GapsView() {
               <span>{summary.daily[0] ? shortDate(summary.daily[0].date) : ""}</span>
               <span>{summary.daily.at(-1) ? shortDate(summary.daily.at(-1)!.date) : ""}</span>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Where they come from</CardTitle>
+            <CardDescription>Public chat versus the media fact-check desk.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {summary.surfaces.map((surface) => (
+              <div key={surface.surface} className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="font-medium">{GAP_SURFACE_LABELS[surface.surface]}</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {formatInt(surface.count)}
+                    {summary.total === 0
+                      ? ""
+                      : ` · ${percent.format(surface.count / summary.total)}`}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary/70"
+                    style={{
+                      width: `${summary.total === 0 ? 0 : (surface.count / summary.total) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
 
