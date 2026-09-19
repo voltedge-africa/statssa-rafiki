@@ -1,92 +1,35 @@
 import { useEffect, useState } from "react";
 
-import type { AiUsageSummary } from "@voltedge/agent-contract";
+import type {
+  AiUsageSummary,
+  GovernancePolicy,
+  GovernanceSettings,
+  GovernanceSettingsResponse,
+} from "@voltedge/agent-contract";
 import { listMediaRequests } from "@voltedge/media-ui";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  Field,
+  FieldDescription,
+  FieldLabel,
+  Input,
   Spinner,
+  Textarea,
+  Toggle,
 } from "@voltedge/ui";
 
-import { ApiError, getAiUsage } from "../lib/ai-telemetry-api.ts";
+import { getAiUsage } from "../lib/ai-telemetry-api.ts";
 import { formatInt, formatMs } from "../lib/format.ts";
+import { getGovernance, updateGovernance } from "../lib/governance-api.ts";
 import { useSession } from "../lib/session.tsx";
-
-interface Policy {
-  area: string;
-  rule: string;
-  enforcement: string;
-}
-
-/**
- * The controls that already exist in code, stated where they are enforced. This is
- * the AI governance framework as a page rather than a slide: every row names a
- * mechanism a judge can trace back to the pipeline.
- */
-const POLICIES: Policy[] = [
-  {
-    area: "Retrieval",
-    rule: "Answers draw only on approved, indexed Stats SA passages.",
-    enforcement:
-      "The draft service returns an information gap and makes no model call when retrieval finds nothing.",
-  },
-  {
-    area: "Grounding",
-    rule: "Every figure is cited as [source#chunk].",
-    enforcement:
-      "The post-generation gate blocks release unless the text cites at least one retrieved passage, and only retrieved ones.",
-  },
-  {
-    area: "Confidence",
-    rule: "Weak retrieval escalates to a human.",
-    enforcement:
-      "The weakest cited passage similarity must clear the confidence floor; below it the release action is disabled.",
-  },
-  {
-    area: "Human approval",
-    rule: "Nothing is released without a communications official.",
-    enforcement:
-      "Only an approve call moves a request to approved; there is no automated publish path.",
-  },
-  {
-    area: "Reviewer guidance",
-    rule: "Guidance steers emphasis, never invents facts.",
-    enforcement:
-      "Reviewer guidance is subordinate to the passages in the prompt and cannot introduce unsupported claims.",
-  },
-  {
-    area: "Labelling",
-    rule: "AI content is always identifiable.",
-    enforcement:
-      "The draft card is structurally badged AI-generated and not approved; the requester never sees drafts.",
-  },
-  {
-    area: "Data minimisation",
-    rule: "Telemetry records behaviour, not content.",
-    enforcement: "Persisted spans strip prompts, completions, tool arguments and outputs.",
-  },
-  {
-    area: "Access",
-    rule: "Least privilege by role.",
-    enforcement:
-      "Press, Staff and Admin capabilities are separated at the API guard and the app proxies.",
-  },
-];
-
-/** Tools the agent is allowed to call. Anything not listed is not reachable. */
-const CAPABILITY_ALLOWLIST = [
-  "search_statssa",
-  "calculate",
-  "current_time",
-  "ui blocks (chart, table, sources, document)",
-];
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
@@ -99,28 +42,33 @@ function Tile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong.";
+}
+
 export function GovernanceView() {
   const { session, loading } = useSession();
 
   const [summary, setSummary] = useState<AiUsageSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [escalation, setEscalation] = useState<{ total: number; gaps: number } | null>(null);
+  const [data, setData] = useState<GovernanceSettingsResponse | null>(null);
+  const [form, setForm] = useState<GovernanceSettings | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const admin = session?.role === "Admin";
 
   useEffect(() => {
     if (!admin) return;
     let cancelled = false;
-    setSummary(null);
-    setError(null);
     void getAiUsage({})
       .then((result) => {
         if (!cancelled) setSummary(result);
       })
-      .catch((caught: unknown) => {
-        if (!cancelled) {
-          setError(caught instanceof ApiError ? caught.message : "Could not load AI usage.");
-        }
+      .catch(() => {
+        if (!cancelled) setSummary(null);
       });
     return () => {
       cancelled = true;
@@ -143,6 +91,63 @@ export function GovernanceView() {
       cancelled = true;
     };
   }, [admin]);
+
+  useEffect(() => {
+    if (!admin) return;
+    let cancelled = false;
+    setLoadError(null);
+    void getGovernance()
+      .then((result) => {
+        if (cancelled) return;
+        setData(result);
+        setForm(result.settings);
+      })
+      .catch((caught: unknown) => {
+        if (!cancelled) setLoadError(message(caught));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [admin]);
+
+  const dirty = Boolean(form && data && JSON.stringify(form) !== JSON.stringify(data.settings));
+
+  function patch(changes: Partial<GovernanceSettings>) {
+    setForm((current) => (current ? { ...current, ...changes } : current));
+    setSaved(false);
+  }
+
+  function updatePolicy(index: number, changes: Partial<GovernancePolicy>) {
+    if (!form) return;
+    patch({
+      policies: form.policies.map((policy, i) =>
+        i === index ? { ...policy, ...changes } : policy,
+      ),
+    });
+  }
+
+  async function save() {
+    if (!form) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    try {
+      const result = await updateGovernance({
+        confidenceMin: form.confidenceMin,
+        generationEnabled: form.generationEnabled,
+        enabledTools: form.enabledTools,
+        policies: form.policies,
+        incidentResponse: form.incidentResponse,
+      });
+      setData(result);
+      setForm(result.settings);
+      setSaved(true);
+    } catch (caught) {
+      setSaveError(message(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -171,17 +176,33 @@ export function GovernanceView() {
 
   return (
     <section className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
-          AI Governance
-        </span>
-        <h1 className="font-heading text-2xl font-medium">Governance</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
+            AI Governance
+          </span>
+          <h1 className="font-heading text-2xl font-medium">Governance</h1>
+        </div>
+        <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
+          {data?.settings.updatedAt ? <span>updated {data.settings.updatedAt}</span> : null}
+          {saved ? <span className="text-emerald-600 dark:text-emerald-400">saved</span> : null}
+          <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
       </div>
 
-      {error ? (
+      {loadError ? (
         <Alert variant="destructive">
-          <AlertTitle>Could not load the governance signals</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertTitle>Could not load the governance settings</AlertTitle>
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {saveError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Could not save</AlertTitle>
+          <AlertDescription>{saveError}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -201,99 +222,195 @@ export function GovernanceView() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Controls enforced in the pipeline</CardTitle>
-            <CardDescription>
-              Each control is a mechanism, not a policy statement, and is traceable to the code that
-              applies it.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {POLICIES.map((policy) => (
-              <div
-                key={policy.area}
-                className="flex flex-col gap-1 border-t border-border pt-4 first:border-t-0 first:pt-0"
-              >
-                <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
-                  {policy.area}
-                </span>
-                <span className="text-sm font-medium">{policy.rule}</span>
-                <span className="text-sm leading-relaxed text-muted-foreground">
-                  {policy.enforcement}
-                </span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      {!form || !data ? (
+        <div className="grid place-items-center py-16">
+          <Spinner className="size-5" />
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="flex flex-col gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Generation &amp; escalation</CardTitle>
+                <CardDescription>
+                  These values are read live by the pipeline: the switch gates chat and drafting,
+                  and the floor decides when a weak retrieval escalates to a human.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-5">
+                <Field>
+                  <FieldLabel>AI generation</FieldLabel>
+                  <div className="flex items-center gap-3">
+                    <Toggle
+                      variant="outline"
+                      pressed={form.generationEnabled}
+                      onPressedChange={(pressed: boolean) => patch({ generationEnabled: pressed })}
+                    >
+                      {form.generationEnabled ? "Enabled" : "Disabled"}
+                    </Toggle>
+                    <FieldDescription>
+                      Disabling answers chat and every draft with an information gap.
+                    </FieldDescription>
+                  </div>
+                </Field>
 
-        <div className="flex flex-col gap-6">
+                <Field>
+                  <FieldLabel htmlFor="confidence-min">Confidence floor</FieldLabel>
+                  <Input
+                    id="confidence-min"
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={form.confidenceMin}
+                    onChange={(event) => patch({ confidenceMin: Number(event.target.value) })}
+                  />
+                  <FieldDescription>
+                    Weakest cited passage similarity a draft may rest on. Passages below it escalate
+                    to a communications official.
+                  </FieldDescription>
+                </Field>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Capability allowlist</CardTitle>
+                <CardDescription>
+                  The tools the agent may call. A tool switched off is not offered to the model; new
+                  sessions pick up the change immediately.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {data.availableTools.map((tool) => {
+                  const enabled = form.enabledTools.includes(tool);
+                  return (
+                    <Toggle
+                      key={tool}
+                      variant="outline"
+                      size="sm"
+                      pressed={enabled}
+                      onPressedChange={(pressed: boolean) =>
+                        patch({
+                          enabledTools: pressed
+                            ? [...form.enabledTools, tool]
+                            : form.enabledTools.filter((item) => item !== tool),
+                        })
+                      }
+                    >
+                      <span className="font-mono text-[11px]">{tool}</span>
+                    </Toggle>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Incident response</CardTitle>
+                <CardDescription>
+                  The operator playbook shown here and used in drills. Each step is editable.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {form.incidentResponse.map((step, index) => (
+                  <div key={index} className="flex items-start gap-2">
+                    <Textarea
+                      rows={2}
+                      value={step}
+                      onChange={(event) =>
+                        patch({
+                          incidentResponse: form.incidentResponse.map((item, i) =>
+                            i === index ? event.target.value : item,
+                          ),
+                        })
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        patch({
+                          incidentResponse: form.incidentResponse.filter((_, i) => i !== index),
+                        })
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => patch({ incidentResponse: [...form.incidentResponse, ""] })}
+                >
+                  Add step
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader>
-              <CardTitle>Capability allowlist</CardTitle>
+              <CardTitle>Controls enforced in the pipeline</CardTitle>
               <CardDescription>
-                Tools the agent is designed to call, taken from its tool registry. Adding one is a
-                reviewed code change, not a configuration toggle.
+                Each control is a mechanism, not a policy statement. Edit the wording; the
+                enforcement is in the code.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {CAPABILITY_ALLOWLIST.map((capability) => (
-                <Badge key={capability} variant="outline" className="font-mono text-[11px]">
-                  {capability}
-                </Badge>
+            <CardContent className="flex flex-col gap-5">
+              {form.policies.map((policy, index) => (
+                <div
+                  key={index}
+                  className="flex flex-col gap-3 border-t border-border pt-5 first:border-t-0 first:pt-0"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
+                      policy {index + 1}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        patch({ policies: form.policies.filter((_, i) => i !== index) })
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <Input
+                    value={policy.area}
+                    placeholder="Area"
+                    onChange={(event) => updatePolicy(index, { area: event.target.value })}
+                  />
+                  <Input
+                    value={policy.rule}
+                    placeholder="Rule"
+                    onChange={(event) => updatePolicy(index, { rule: event.target.value })}
+                  />
+                  <Textarea
+                    rows={2}
+                    value={policy.enforcement}
+                    placeholder="How it is enforced"
+                    onChange={(event) => updatePolicy(index, { enforcement: event.target.value })}
+                  />
+                </div>
               ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Models in use</CardTitle>
-              <CardDescription>
-                Observed from persisted telemetry. The provider and model are pinned in
-                configuration, so the deployment can swap providers without changing the pipeline.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {(summary?.byModel ?? []).length === 0 ? (
-                <span className="text-sm text-muted-foreground">
-                  No model calls recorded for the current period.
-                </span>
-              ) : (
-                summary?.byModel.map((model) => (
-                  <Badge key={model.key} variant="secondary" className="font-mono text-[11px]">
-                    {model.key} · {formatInt(model.requests)}
-                  </Badge>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Incident response</CardTitle>
-              <CardDescription>
-                Documented now; the live kill switch is planned. Until then the operator actions are
-                manual and auditable.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2 text-sm leading-relaxed text-muted-foreground">
-              <p>
-                <span className="text-foreground">Rotate the provider key</span> to revoke model
-                access immediately; drafting surfaces an information gap rather than failing open.
-              </p>
-              <p>
-                <span className="text-foreground">Remove the corpus index</span> to force every
-                request to an information gap and out of automated drafting.
-              </p>
-              <p>
-                <span className="text-foreground">Every action is observable</span> in the telemetry
-                view, and no prompt or completion content is retained.
-              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                onClick={() =>
+                  patch({ policies: [...form.policies, { area: "", rule: "", enforcement: "" }] })
+                }
+              >
+                Add policy
+              </Button>
             </CardContent>
           </Card>
         </div>
-      </div>
+      )}
     </section>
   );
 }

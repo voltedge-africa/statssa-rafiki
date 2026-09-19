@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import {
+  DRAFT_CONFIDENCE_MIN,
   MEDIA_REQUEST_STATUSES,
   MEDIA_REQUEST_STATUS_LABELS,
   isTerminalStatus,
@@ -41,6 +42,7 @@ import {
   RequestTimeline,
   addMediaNote,
   approveMediaRequest,
+  getMediaPolicy,
   getMediaRequest,
   regenerateMediaRequest,
   rejectMediaRequest,
@@ -112,6 +114,7 @@ export function MediaRequestView({ reference }: { reference: string }) {
   const [caseNote, setCaseNote] = useState("");
   const [visibility, setVisibility] = useState<MediaEventVisibility>("internal");
   const [previewSource, setPreviewSource] = useState<string | null>(null);
+  const [confidenceMin, setConfidenceMin] = useState(DRAFT_CONFIDENCE_MIN);
 
   const load = useCallback(async () => {
     setDetailError(null);
@@ -126,6 +129,21 @@ export function MediaRequestView({ reference }: { reference: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The confidence floor is an operator setting; fall back to the contract default.
+  useEffect(() => {
+    let cancelled = false;
+    void getMediaPolicy()
+      .then((policy) => {
+        if (!cancelled) setConfidenceMin(policy.confidenceMin);
+      })
+      .catch(() => {
+        if (!cancelled) setConfidenceMin(DRAFT_CONFIDENCE_MIN);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!detail) return;
@@ -236,7 +254,7 @@ export function MediaRequestView({ reference }: { reference: string }) {
   ) : null;
 
   const gateSources = detail?.draft?.sources ?? detail?.approvedSources ?? [];
-  const gate = reviewDraft(response, gateSources);
+  const gate = reviewDraft(response, gateSources, { confidenceMin });
   // The gate only blocks releasing an AI-derived response; manually drafted replies
   // (an information gap, or a response typed from scratch) stay with the official.
   const gateBlocks = Boolean(detail?.draft?.text) && !gate.passed;
