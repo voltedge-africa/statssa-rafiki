@@ -24,7 +24,7 @@ export function SiteFooter() {
       <div className="grid gap-10 px-6 py-14 sm:px-10 lg:grid-cols-[1.6fr_1fr_1fr_1fr] lg:gap-16 lg:px-14">
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center gap-4">
-            <img src="/statssa-logo.png" alt="Statistics South Africa" className="h-12 w-auto" />
+            <img src="/statssa-logo.png" alt="Statistics South Africa" className="h-16 w-auto" />
             <span className="text-xs text-muted-foreground">In partnership with</span>
             <img src="/sita-logo.png" alt="SITA" className="h-8 w-auto" />
           </div>

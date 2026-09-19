@@ -46,7 +46,7 @@ export function AppSidebar() {
           <img
             src="/statssa-logo.png"
             alt="Statistics South Africa"
-            className="h-9 w-auto group-data-[collapsible=icon]:hidden"
+            className="h-16 w-auto group-data-[collapsible=icon]:hidden"
           />
         </a>
         <span className="px-2 font-mono text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">

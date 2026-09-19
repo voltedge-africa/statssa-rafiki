@@ -112,7 +112,7 @@ export function SiteHeader() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
         <div className="flex h-16 items-center gap-10 px-6 sm:px-10 lg:px-14">
           <a href="/" className="flex shrink-0 items-center">
-            <img src="/statssa-logo.png" alt="Statistics South Africa" className="h-10 w-auto" />
+            <img src="/statssa-logo.png" alt="Statistics South Africa" className="h-16 w-auto" />
           </a>
 
           <nav className="hidden flex-1 items-center gap-6 md:flex">

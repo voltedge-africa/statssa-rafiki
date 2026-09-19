@@ -89,7 +89,7 @@ export function ChatHistorySidebar() {
     <Sidebar collapsible="offcanvas">
       <SidebarHeader className="gap-0 pt-3">
         <a href="/" className="mb-2 flex items-center px-2">
-          <img src="/statssa-logo.png" alt="Statistics South Africa" className="h-9 w-auto" />
+          <img src="/statssa-logo.png" alt="Statistics South Africa" className="h-16 w-auto" />
         </a>
         <div className="flex items-center gap-1 px-2">
           <h2 className="min-w-0 flex-1 truncate font-heading text-sm font-semibold">
