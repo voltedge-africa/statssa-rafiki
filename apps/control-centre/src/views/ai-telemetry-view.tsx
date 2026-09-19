@@ -208,7 +208,7 @@ function BreakdownTable({ group, rows }: { group: string; rows: AiUsageBucket[] 
           <TableHead className="text-right">Requests</TableHead>
           <TableHead className="text-right">Tool calls</TableHead>
           <TableHead className="text-right">Tokens</TableHead>
-          <TableHead className="text-right">Cost</TableHead>
+          <TableHead className="text-right">Cost (ZAR)</TableHead>
           <TableHead className="text-right">Avg latency</TableHead>
           <TableHead className="text-right">Errors</TableHead>
         </TableRow>
@@ -565,7 +565,7 @@ export function AiTelemetryView() {
         <Metric label="Input tokens" value={formatInt(summary?.totals.inputTokens)} />
         <Metric label="Output tokens" value={formatInt(summary?.totals.outputTokens)} />
         <Metric label="Total tokens" value={formatInt(summary?.totals.totalTokens)} />
-        <Metric label="Cost" value={formatCost(summary?.totals.costUsd)} />
+        <Metric label="Cost (ZAR)" value={formatCost(summary?.totals.costUsd)} />
         <Metric label="Avg latency" value={formatMs(summary?.totals.avgDurationMs)} />
         <Metric label="Errors" value={formatInt(summary?.totals.errorCount)} />
       </div>
@@ -620,7 +620,7 @@ export function AiTelemetryView() {
                       <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">In → out</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead className="text-right">Cost (ZAR)</TableHead>
                       <TableHead className="text-right">Latency</TableHead>
                     </TableRow>
                   </TableHeader>

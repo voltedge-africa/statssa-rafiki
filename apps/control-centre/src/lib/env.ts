@@ -1,5 +1,7 @@
 import { appUrlFromOrigin } from "@voltedge/auth-contract";
 
+const parsedZarPerUsd = Number(import.meta.env.VITE_ZAR_PER_USD);
+
 /**
  * Client (browser) environment. Values come from Vite, so they must be VITE_-prefixed and
  * are inlined at build time (see apps/control-centre/.env.example).
@@ -9,6 +11,8 @@ export const env = {
   websiteUrl: import.meta.env.VITE_WEBSITE_URL,
   /** Optional. URL of the media room; derived from the browser host when unset. */
   mediaPortalUrl: import.meta.env.VITE_MEDIA_PORTAL_URL,
+  /** Rand per US dollar for provider-cost display; falls back to 18.50 when unset. */
+  zarPerUsd: Number.isFinite(parsedZarPerUsd) && parsedZarPerUsd > 0 ? parsedZarPerUsd : 18.5,
 } as const;
 
 /** The public website runs alongside this app on port 3002 in development. */
