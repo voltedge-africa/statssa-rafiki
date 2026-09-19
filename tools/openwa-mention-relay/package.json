@@ -5,8 +5,8 @@
   "description": "Relay that echoes @mentions of the OpenWA bot back into a group, tagging the original sender.",
   "type": "module",
   "scripts": {
-    "start": "node relay.mjs",
-    "test": "node --test relay.test.mjs",
+    "start": "node --env-file-if-exists=.env relay.mjs",
+    "test": "node --test relay-tests.mjs",
     "e2e": "node e2e.mjs"
   },
   "dependencies": {
