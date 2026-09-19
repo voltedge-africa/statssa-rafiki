@@ -1,0 +1,33 @@
+{
+  "name": "@voltedge/analytics-contract",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cross-desk analytics snapshot shared by the Rafiki API and the control-centre dashboard.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepare": "vp pack"
+  },
+  "dependencies": {
+    "@voltedge/agent-contract": "workspace:*",
+    "@voltedge/media-contract": "workspace:*",
+    "@voltedge/popia-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "~6.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

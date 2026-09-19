@@ -14,6 +14,7 @@ import { useSession } from "./lib/session.tsx";
 import { AiTelemetryView } from "./views/ai-telemetry-view.tsx";
 import { AnalysisBriefView } from "./views/analysis-brief-view.tsx";
 import { AnalysisView } from "./views/analysis-view.tsx";
+import { AnalyticsView } from "./views/analytics-view.tsx";
 import { CaseQueueView } from "./views/case-queue-view.tsx";
 import { CaseRequestView } from "./views/case-request-view.tsx";
 import { GapsView } from "./views/gaps-view.tsx";
@@ -52,6 +53,7 @@ export function App() {
   const mediaReference = mediaReferenceFromPath(path);
   const caseReference = caseReferenceFromPath(path);
   const briefId = briefIdFromPath(path);
+  const onAnalytics = path === "/" || path === "/analytics";
   const onAnalysis = path === "/analysis" || briefId !== null;
   const onGaps = path === "/gaps";
   const onMediaDesk = path === "/media" || mediaReference !== null;
@@ -64,11 +66,13 @@ export function App() {
       ? "Content analysis"
       : onGaps
         ? "Knowledge gaps"
-        : onMediaDesk
-          ? "Media desk"
-          : onGovernance || onAiGovernance
-            ? "AI Governance"
-            : "POPIA case queue";
+        : onAnalytics
+          ? "Analytics"
+          : onMediaDesk
+            ? "Media desk"
+            : onGovernance || onAiGovernance
+              ? "AI Governance"
+              : "POPIA case queue";
   const subtitle =
     mediaReference ??
     caseReference ??
@@ -78,13 +82,15 @@ export function App() {
         ? "cited briefs from official content"
         : onGaps
           ? "what the corpus cannot answer"
-          : onMediaDesk
-            ? "media fact-check review"
-            : onGovernance
-              ? "policy, controls & model posture"
-              : onAiGovernance
-                ? "model & tool telemetry"
-                : "staff & admin workspace");
+          : onAnalytics
+            ? "cross-desk activity"
+            : onMediaDesk
+              ? "media fact-check review"
+              : onGovernance
+                ? "policy, controls & model posture"
+                : onAiGovernance
+                  ? "model & tool telemetry"
+                  : "staff & admin workspace");
 
   return (
     <SidebarProvider>
@@ -109,6 +115,8 @@ export function App() {
             <GovernanceView />
           ) : onAiGovernance ? (
             <AiTelemetryView />
+          ) : onAnalytics ? (
+            <AnalyticsView />
           ) : briefId ? (
             <AnalysisBriefView id={briefId} />
           ) : onAnalysis ? (

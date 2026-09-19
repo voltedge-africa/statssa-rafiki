@@ -217,6 +217,9 @@ importers:
       '@voltedge/agent-contract':
         specifier: workspace:*
         version: link:../../packages/agent-contract
+      '@voltedge/analytics-contract':
+        specifier: workspace:*
+        version: link:../../packages/analytics-contract
       '@voltedge/auth-contract':
         specifier: workspace:*
         version: link:../../packages/auth-contract
@@ -336,6 +339,9 @@ importers:
       '@voltedge/ai-chat':
         specifier: workspace:*
         version: link:../../packages/ai-chat
+      '@voltedge/analytics-contract':
+        specifier: workspace:*
+        version: link:../../packages/analytics-contract
       '@voltedge/auth-contract':
         specifier: workspace:*
         version: link:../../packages/auth-contract
@@ -369,6 +375,9 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.3.0(react@19.3.0)
+      recharts:
+        specifier: 3.8.0
+        version: 3.8.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react-is@17.0.2)(react@19.3.0)(redux@5.0.1)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4
@@ -719,6 +728,31 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.3.0(react@19.3.0)
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.2(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.1)
+
+  packages/analytics-contract:
+    dependencies:
+      '@voltedge/agent-contract':
+        specifier: workspace:*
+        version: link:../agent-contract
+      '@voltedge/media-contract':
+        specifier: workspace:*
+        version: link:../media-contract
+      '@voltedge/popia-contract':
+        specifier: workspace:*
+        version: link:../popia-contract
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.6.1
       typescript:
         specifier: ~6.0.2
         version: 6.0.3

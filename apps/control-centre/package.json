@@ -12,6 +12,7 @@
     "@openauthjs/openauth": "^0.4.3",
     "@voltedge/agent-contract": "workspace:*",
     "@voltedge/ai-chat": "workspace:*",
+    "@voltedge/analytics-contract": "workspace:*",
     "@voltedge/auth-contract": "workspace:*",
     "@voltedge/brief-contract": "workspace:*",
     "@voltedge/gaps-contract": "workspace:*",
@@ -22,7 +23,8 @@
     "@voltedge/ui": "workspace:*",
     "lucide-react": "^1.46.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "recharts": "3.8.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4",

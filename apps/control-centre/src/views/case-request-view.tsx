@@ -120,7 +120,7 @@ export function CaseRequestView({ reference }: { reference: string }) {
   return (
     <section className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <Button variant="ghost" size="sm" nativeButton={false} render={<a href="/" />}>
+        <Button variant="ghost" size="sm" nativeButton={false} render={<a href="/cases" />}>
           <ArrowLeft />
           Case queue
         </Button>

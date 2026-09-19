@@ -1,5 +1,6 @@
 import {
   BookOpenText,
+  ChartLine,
   ClipboardList,
   ExternalLink,
   FileSearch,
@@ -55,14 +56,32 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
+          <SidebarGroupLabel>Overview</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={path === "/" || path === "/analytics"}
+                  tooltip="Analytics"
+                  render={<a href="/analytics" />}
+                >
+                  <ChartLine />
+                  <span>Analytics</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
           <SidebarGroupLabel>POPIA</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={path === "/" || path.startsWith("/cases/")}
+                  isActive={path === "/cases" || path.startsWith("/cases/")}
                   tooltip="Case queue"
-                  render={<a href="/" />}
+                  render={<a href="/cases" />}
                 >
                   <ClipboardList />
                   <span>Case queue</span>
