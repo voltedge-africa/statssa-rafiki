@@ -1,4 +1,4 @@
-import { ClipboardList, ExternalLink, LogOut, Newspaper, ShieldCheck } from "lucide-react";
+import { ClipboardList, ExternalLink, LogOut, Newspaper, Scale, ShieldCheck } from "lucide-react";
 
 import {
   Sidebar,
@@ -86,6 +86,16 @@ export function AppSidebar() {
             <SidebarGroupLabel>AI Governance</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={path === "/governance"}
+                    tooltip="Governance"
+                    render={<a href="/governance" />}
+                  >
+                    <Scale />
+                    <span>Governance</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     isActive={path === "/ai"}
