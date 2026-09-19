@@ -1,0 +1,15 @@
+{
+  "name": "@voltedge/openwa-mention-relay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Relay that echoes @mentions of the OpenWA bot back into a group, tagging the original sender.",
+  "type": "module",
+  "scripts": {
+    "start": "node relay.mjs",
+    "test": "node --test relay.test.mjs",
+    "e2e": "node e2e.mjs"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}
