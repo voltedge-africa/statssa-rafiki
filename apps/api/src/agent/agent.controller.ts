@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Req,
+  Res,
+} from "@nestjs/common";
 import type { Request, Response } from "express";
 import type { AuthUser } from "@voltedge/auth-contract";
 import type { ChatEvent, ChatRequest } from "@voltedge/agent-contract";
@@ -96,6 +105,40 @@ export class AgentController {
       clearInterval(heartbeat);
       if (!res.writableEnded) res.end();
     }
+  }
+
+  /**
+   * Non-streaming reply endpoint for automated public clients (the WhatsApp relay).
+   *
+   * `@Public()` attaches no user, so a caller can never be elevated to a staff/admin/media role —
+   * not even by sending a token. It runs the same public chat path and public-data tools as the
+   * website and returns one formatted answer; the relay does no access filtering of its own.
+   */
+  @Post("chat/final")
+  @Public()
+  async chatFinal(@Body() body: Partial<ChatRequest> | undefined, @Req() req: Request) {
+    if (!body?.sessionId || typeof body.sessionId !== "string") {
+      throw new BadRequestException("sessionId is required");
+    }
+    if (!body.message || typeof body.message !== "string" || body.message.trim() === "") {
+      throw new BadRequestException("message is required");
+    }
+
+    if (!(await this.governance.isGenerationEnabled())) {
+      return {
+        answer: "AI generation is disabled by an administrator.",
+        grounded: "",
+        formatterModel: "",
+        usedFallback: true,
+        tables: [],
+      };
+    }
+
+    const host = requestOrigin(req);
+    return this.agent.runFinalReply(
+      { sessionId: body.sessionId, message: body.message },
+      { feature: "openwa_reply", clientRole: "anonymous", ...(host ? { clientOrigin: host } : {}) },
+    );
   }
 
   @Post("reset")

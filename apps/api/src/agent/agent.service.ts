@@ -6,7 +6,16 @@ import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go"
 import type { SpanAttributes } from "@earendil-works/pi-telemetry";
 import type { AgentStatus, ChatEvent, ChatRequest } from "@voltedge/agent-contract";
 import { GovernanceService } from "../admin/governance.service.ts";
-import { hasProviderKey, MODEL, PROVIDER } from "./config.ts";
+import {
+  hasProviderKey,
+  MODEL,
+  MODEL_ALIASES,
+  NORMALIZER_MODEL,
+  PROVIDER,
+  WRAPPER_MODEL,
+} from "./config.ts";
+import { hasFactTables } from "./factstore.ts";
+import { KNOWLEDGE_COVERAGE, QUERY_GLOSSARY } from "./query-glossary.ts";
 import { guardedFetch } from "./offline.ts";
 import { SpanHandle, TelemetryService } from "./telemetry.service.ts";
 import { TOOLS } from "./tools.ts";
@@ -46,6 +55,53 @@ export const SYSTEM_PROMPT = [
   "Use current_time for date-sensitive questions.",
   "Answer concisely and prefer South African English.",
 ].join("\n");
+
+/**
+ * System prompt for the small "reply formatter" model. It receives the main agent's raw output —
+ * which mixes step-by-step working with the final answer — and returns the single final reply.
+ * It is deliberately stateless and data-free: the only input is already-grounded text, so this
+ * pass can change wording but must never introduce a figure of its own.
+ */
+export const REPLY_FORMATTER_SYSTEM_PROMPT = [
+  "You format the final reply of a WhatsApp assistant that answers questions about Statistics South Africa publications.",
+  "You are given the assistant's raw output, which mixes its step-by-step working (for example 'I'll look up...', tool reasoning) with the actual answer.",
+  "Produce the one final reply to send back to the user.",
+  "Rules:",
+  "- Output ONLY the final answer. Remove all working, tool narration, and step-by-step reasoning.",
+  "- Keep every number, percentage, unit and proper noun exactly as written. Never invent, change, round, recompute or re-derive a figure.",
+  "- Never add facts, opinions, greetings, disclaimers or questions that are not already in the final answer.",
+  "- Remove citation markers such as [source#12], [ghs-2025-statistical-release.md#214] or [factstore:table_name].",
+  "- Write natural, concise South African English suitable for a WhatsApp message. Plain text only, no Markdown.",
+  "- If the raw output says the documentation does not contain the information, keep exactly that meaning.",
+].join("\n");
+
+/**
+ * System prompt for the input-side query normalizer.
+ *
+ * It is a TRANSLATOR, not an assistant: it only maps the user's informal/slang wording onto the
+ * knowledge base's vocabulary so retrieval can match it, and it flags clearly out-of-scope
+ * questions. It never answers, and never adds a fact, number, metric, entity or time period. The
+ * RAG system remains the sole source of every answer.
+ */
+export const QUERY_NORMALIZER_SYSTEM_PROMPT = [
+  "You are a query translator between a user and a Statistics South Africa knowledge base. You are NOT an assistant and you NEVER answer questions.",
+  "The knowledge base answers ONLY from Stats SA's General Household Survey (GHS) 2025. Your only job is to rephrase the user's question in the study's own vocabulary, with the smallest change needed for retrieval to match it.",
+  "You receive a COVERAGE list (topics and published fact tables) and a GLOSSARY (informal terms mapped to the study's vocabulary).",
+  "Rules:",
+  "- NEVER answer the question, and never state any fact, number, figure, definition or finding.",
+  "- Add NOTHING the user did not write: no facts, numbers, metrics, entities, places, dates or time periods.",
+  "- Preserve the user's subject, intent, scope and metric. Translate their wording; do not solve their question.",
+  "- Make the minimum edit. If the wording already uses the study's vocabulary, return it unchanged.",
+  "- You may reshape the question into the form the study reports (for example, an existence question may become 'What percentage of households have ...'), but only by changing the question, never by supplying data.",
+  "- If the user replied to a message, use it as context for the translation, but return a single question.",
+  "- If the question is CLEARLY outside the coverage (general knowledge, current affairs, politics, sport, another country, another Stats SA release, forecasts or opinions), output one line starting exactly with OUT_OF_SCOPE: <short reason>. Do not answer it.",
+  "Output ONLY the translated question, or the OUT_OF_SCOPE line. No preamble, no quotes, no explanation.",
+  "If you are unsure whether something is in scope, do NOT reject — translate it as best you can.",
+].join("\n");
+
+/** Message returned when the normalizer is confident a question is outside the studies. */
+export const OUT_OF_SCOPE_REPLY =
+  "That falls outside the Stats SA studies I can answer from — my knowledge base is the General Household Survey (GHS) 2025. I can help with GHS topics such as households, services (water, sanitation, electricity, refuse), education, health, internet access and household assets.";
 
 const MAX_SESSIONS = 100;
 const USER_AGENT = "rafiki-statssa-agent/0.1";
@@ -144,6 +200,32 @@ export class AgentService implements OnModuleInit {
         "AgentService",
       );
     }
+    await this.reportFactStoreReadiness();
+  }
+
+  /**
+   * An empty fact store is a supported state — the agent falls back to corpus text for exact
+   * figures — but it is otherwise silent: without this the only trace is a tool result the model
+   * sees, never the operator. Surface it once at boot so a skipped `factstore:derive` /
+   * `factstore:load` is visible in the logs instead of quietly degrading number answers.
+   */
+  private async reportFactStoreReadiness(): Promise<void> {
+    try {
+      if (await hasFactTables()) {
+        Logger.log("Fact store ready", "AgentService");
+      } else {
+        Logger.warn(
+          "Fact store is empty — exact-number questions will fall back to corpus text. " +
+            "Load it with `vp run factstore:derive && vp run factstore:load`.",
+          "AgentService",
+        );
+      }
+    } catch (error) {
+      Logger.warn(
+        `Fact store readiness check failed: ${error instanceof Error ? error.message : String(error)}`,
+        "AgentService",
+      );
+    }
   }
 
   private models() {
@@ -160,6 +242,21 @@ export class AgentService implements OnModuleInit {
       throw new Error(`Unknown model "${MODEL}" for provider "${PROVIDER.id}"`);
     }
     return model;
+  }
+
+  /**
+   * Resolve a model id for a one-off completion. Prefers the bundled catalog; when the provider
+   * serves a newer id the catalog does not list yet, clones the catalogued sibling named in
+   * MODEL_ALIASES so the request still reaches the provider (which routes by `model.provider` and
+   * sends `model.id`).
+   */
+  private resolveModelForId(id: string): Model<any> | undefined {
+    const direct = this.models().getModel(PROVIDER.id, id);
+    if (direct) return direct;
+    const siblingId = MODEL_ALIASES[id];
+    if (!siblingId) return undefined;
+    const sibling = this.models().getModel(PROVIDER.id, siblingId);
+    return sibling ? { ...sibling, id, name: id } : undefined;
   }
 
   providerStatus(): AgentStatus {
@@ -189,12 +286,21 @@ export class AgentService implements OnModuleInit {
     user: string;
     feature?: string;
     tools?: AgentTool<any, any>[];
+    /** Optional model id from the same provider. Defaults to PI_MODEL (the main agent's model). */
+    model?: string;
   }): Promise<{
     text: string;
     model: string;
     error?: string;
   }> {
-    const model = this.resolveModel();
+    const model = input.model ? this.resolveModelForId(input.model) : this.resolveModel();
+    if (!model) {
+      return {
+        text: "",
+        model: `${PROVIDER.id}/${input.model}`,
+        error: `Unknown model "${input.model}" for provider "${PROVIDER.id}".`,
+      };
+    }
     const label = `${model.provider}/${model.id}`;
 
     if (!hasProviderKey()) {
@@ -565,5 +671,192 @@ export class AgentService implements OnModuleInit {
       }
       onEvent({ type: "done" });
     }
+  }
+
+  /**
+   * Normalize an informal/slang question onto the knowledge base's vocabulary and decide whether it
+   * is in scope, using the small normalizer model. It gets no tools and only public coverage
+   * metadata; it never answers and never adds a fact.
+   *
+   * Fail-open: if the normalizer is unavailable or returns nothing usable, the original question is
+   * returned and the caller runs the normal retrieval path. Out-of-scope is reported only when the
+   * model is confident (the exact `OUT_OF_SCOPE:` sentinel).
+   */
+  private async normalizeQuestion(
+    raw: string,
+  ): Promise<{ query: string; outOfScope: boolean; reason?: string }> {
+    const input = [
+      "COVERAGE:",
+      KNOWLEDGE_COVERAGE,
+      "",
+      "GLOSSARY (informal -> study vocabulary):",
+      QUERY_GLOSSARY,
+      "",
+      "USER MESSAGE:",
+      raw,
+    ].join("\n");
+
+    const { text, error } = await this.complete({
+      system: QUERY_NORMALIZER_SYSTEM_PROMPT,
+      user: input,
+      feature: "openwa_normalize",
+      model: NORMALIZER_MODEL,
+    });
+
+    const normalized = text.trim();
+    if (error || !normalized) return { query: raw, outOfScope: false };
+
+    if (normalized.toUpperCase().startsWith("OUT_OF_SCOPE:")) {
+      return {
+        query: raw,
+        outOfScope: true,
+        reason: normalized.slice("OUT_OF_SCOPE:".length).trim(),
+      };
+    }
+    // A rewrite too short to be a real question falls back to the original.
+    return { query: normalized.length >= 3 ? normalized : raw, outOfScope: false };
+  }
+
+  /**
+   * Non-streaming companion to runChat for automated public clients (the WhatsApp relay).
+   *
+   * It normalizes the question against the knowledge base's vocabulary, runs the exact same public
+   * chat path and public-data tools as `POST /api/chat`, then sends the raw output through the small
+   * formatter model to produce one natural final reply. Neither the normalizer nor the formatter is
+   * given tools, so neither can reach any data. This method never inspects a role: its route is
+   * public, so the caller is a general member of the public by construction.
+   */
+  async runFinalReply(
+    request: ChatRequest,
+    origin?: TelemetryOrigin,
+  ): Promise<{
+    answer: string;
+    grounded: string;
+    formatterModel: string;
+    usedFallback: boolean;
+    /** The question after normalization, when it differed from the input. */
+    normalizedQuery?: string;
+    /** True when the normalizer was confident the question is outside the studies. */
+    outOfScope?: boolean;
+    /** Any tables the agent rendered (show_table). Structured, so the caller can format for its surface. */
+    tables: Array<{
+      title?: string;
+      columns: string[];
+      rows: (string | number)[][];
+      source?: string;
+    }>;
+    error?: string;
+  }> {
+    const normalized = await this.normalizeQuestion(request.message);
+    if (normalized.outOfScope) {
+      return {
+        answer: OUT_OF_SCOPE_REPLY,
+        grounded: "",
+        formatterModel: NORMALIZER_MODEL,
+        usedFallback: true,
+        outOfScope: true,
+        tables: [],
+      };
+    }
+
+    // Feed the rewrite as the question, but keep the user's original wording as context so nothing
+    // the normalizer dropped is lost to retrieval.
+    const message =
+      normalized.query && normalized.query !== request.message
+        ? `${normalized.query}\n\n(User's original wording: ${request.message})`
+        : request.message;
+
+    const events: ChatEvent[] = [];
+    await this.runChat({ ...request, message }, (event) => events.push(event), origin);
+
+    // Same structural split the client used: narration lives around tool calls, the answer is the
+    // last text segment. The full raw text still goes to the formatter, which can separate the two
+    // semantically; this grounded segment is the safety net if it cannot.
+    const segments = [""];
+    let raw = "";
+    let error: string | undefined;
+    const tables: Array<{
+      title?: string;
+      columns: string[];
+      rows: (string | number)[][];
+      source?: string;
+    }> = [];
+    for (const event of events) {
+      if (event.type === "text") {
+        segments[segments.length - 1] += event.delta;
+        raw += event.delta;
+      } else if (event.type === "tool_start" || event.type === "tool_end") {
+        if (segments[segments.length - 1].trim()) segments.push("");
+      } else if (event.type === "ui") {
+        // A show_table call renders the data as a UI block, not prose; carry it out so text-only
+        // surfaces (WhatsApp) can still show it.
+        if (event.block.component === "table") tables.push(event.block);
+      } else if (event.type === "error") {
+        error = event.message;
+      }
+    }
+    const grounded = ([...segments].reverse().find((segment) => segment.trim()) ?? "").trim();
+    const normalizedQuery = normalized.query !== request.message ? normalized.query : undefined;
+
+    if (error && !grounded) {
+      return {
+        answer: error,
+        grounded: "",
+        formatterModel: WRAPPER_MODEL,
+        usedFallback: true,
+        ...(normalizedQuery ? { normalizedQuery } : {}),
+        tables,
+        error,
+      };
+    }
+
+    const formatted = await this.formatReply(raw, grounded || raw);
+    return {
+      answer: formatted.text,
+      grounded: grounded || raw,
+      formatterModel: formatted.model,
+      usedFallback: formatted.usedFallback,
+      ...(normalizedQuery ? { normalizedQuery } : {}),
+      tables,
+    };
+  }
+
+  /**
+   * Reword an already-grounded answer with the small formatter model.
+   *
+   * Falls back to the grounded text — never to an invented one — when the formatter is
+   * unavailable, returns nothing, or introduces a number absent from its input. That last check is
+   * the same deterministic number test the chat path runs, so a formatting pass can never widen
+   * the set of figures the public agent grounded.
+   */
+  private async formatReply(
+    raw: string,
+    fallback: string,
+  ): Promise<{ text: string; model: string; usedFallback: boolean }> {
+    const safe = fallback.trim();
+    if (!safe) return { text: "", model: WRAPPER_MODEL, usedFallback: true };
+
+    const { text, model, error } = await this.complete({
+      system: REPLY_FORMATTER_SYSTEM_PROMPT,
+      user: raw,
+      feature: "openwa_reply",
+      model: WRAPPER_MODEL,
+    });
+
+    if (error || !text.trim()) {
+      return { text: safe, model, usedFallback: true };
+    }
+
+    const allowed = new Set(extractNumbers(raw));
+    const invented = extractNumbers(text).filter((value) => !allowed.has(value));
+    if (invented.length > 0) {
+      Logger.warn(
+        `Reply formatter introduced ungrounded number(s) [${invented.join(", ")}]; using the grounded answer`,
+        "AgentService",
+      );
+      return { text: safe, model, usedFallback: true };
+    }
+
+    return { text: text.trim(), model, usedFallback: false };
   }
 }
