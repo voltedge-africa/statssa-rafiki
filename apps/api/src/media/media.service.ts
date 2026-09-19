@@ -33,6 +33,7 @@ import {
   type UpdateMediaRequestInput,
 } from "@voltedge/media-contract";
 import { MediaDraftService, type MediaDraftResult } from "./media-draft.service.ts";
+import { GovernanceService } from "../admin/governance.service.ts";
 import {
   MediaRepository,
   type MediaEventRecord,
@@ -169,7 +170,13 @@ export class MediaService {
   constructor(
     private readonly repo: MediaRepository,
     private readonly drafts: MediaDraftService,
+    private readonly governance: GovernanceService,
   ) {}
+
+  /** The gate configuration the desk reads: the operator-set confidence floor. */
+  async policy(): Promise<{ confidenceMin: number }> {
+    return { confidenceMin: await this.governance.confidenceMin() };
+  }
 
   async submit(input: SubmitMediaRequestInput, user: AuthUser): Promise<MediaRequestPublic> {
     const identity = await this.repo.findUserById(user.id);
@@ -555,9 +562,23 @@ export class MediaService {
     from: MediaRequestStatus,
     guidance: string | null = record.reviewerGuidance,
   ): Promise<void> {
+    const settings = await this.governance.settings();
+    if (!settings.generationEnabled) {
+      await this.generationFailed(
+        record,
+        new Error("AI generation is disabled by an administrator."),
+      );
+      return;
+    }
+
     let result: MediaDraftResult;
     try {
-      result = await this.drafts.generate(record.claim, record.context, guidance);
+      result = await this.drafts.generate(
+        record.claim,
+        record.context,
+        guidance,
+        settings.confidenceMin,
+      );
     } catch (error) {
       await this.generationFailed(record, error);
       return;

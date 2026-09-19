@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import type { AuthUser } from "@voltedge/auth-contract";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { GovernanceService } from "../admin/governance.service.ts";
 import type { MediaDraftResult } from "./media-draft.service.ts";
 import { MediaDraftService } from "./media-draft.service.ts";
 import { MediaService } from "./media.service.ts";
@@ -191,6 +192,35 @@ class FakeDraftService {
   }
 }
 
+class FakeGovernanceService {
+  enabled = true;
+  confidence = 0.85;
+
+  async settings() {
+    return {
+      confidenceMin: this.confidence,
+      generationEnabled: this.enabled,
+      enabledTools: ["search_statssa"],
+      policies: [],
+      incidentResponse: [],
+      updatedAt: null,
+      updatedBy: null,
+    };
+  }
+
+  async confidenceMin() {
+    return this.confidence;
+  }
+
+  async isGenerationEnabled() {
+    return this.enabled;
+  }
+
+  async enabledTools() {
+    return ["search_statssa"];
+  }
+}
+
 const staff: AuthUser = { id: "staff-1", role: "Staff" };
 const press: AuthUser = { id: "press-1", role: "Press" };
 
@@ -206,11 +236,13 @@ function makeService() {
     { id: "staff-1", email: "staff@statssa.gov.za" },
   );
   const drafts = new FakeDraftService();
+  const governance = new FakeGovernanceService();
   const service = new MediaService(
     fake as unknown as MediaRepository,
     drafts as unknown as MediaDraftService,
+    governance as unknown as GovernanceService,
   );
-  return { fake, drafts, service };
+  return { fake, drafts, governance, service };
 }
 
 async function waitForStatus(fake: FakeRepository, status: string) {

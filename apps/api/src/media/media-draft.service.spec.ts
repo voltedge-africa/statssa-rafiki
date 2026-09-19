@@ -42,6 +42,27 @@ describe("MediaDraftService", () => {
     retrieveMock.mockReset();
   });
 
+  it("escalates to a gap when retrieval confidence is below the threshold", async () => {
+    retrieveMock.mockResolvedValue([{ ...hits[0]!, similarity: 0.82 }]);
+    const { complete, service } = makeService();
+
+    const result = await service.generate("Did inflation fall to 2%?", null, null, 0.85);
+
+    expect(result.text).toBeNull();
+    expect(result.gap).toContain("confidence");
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("drafts when the best passage clears the threshold", async () => {
+    retrieveMock.mockResolvedValue(hits);
+    const { complete, service } = makeService();
+
+    const result = await service.generate("Did inflation fall to 2%?", null, null, 0.9);
+
+    expect(result.text).toContain("[cpi-index#4]");
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it("flags a gap without calling the model when no passage is relevant", async () => {
     retrieveMock.mockResolvedValue([]);
     const { complete, service } = makeService();

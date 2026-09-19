@@ -394,8 +394,16 @@ function sentences(text: string): string[] {
  * can be released: it proves the text is grounded, cites at least one retrieved
  * passage, and only cites passages that were actually retrieved. Uncited claim
  * sentences and weak passage similarity are surfaced rather than silently ignored.
+ *
+ * `options.confidenceMin` lets an operator raise or lower the confidence floor from
+ * the governance settings; it defaults to {@link DRAFT_CONFIDENCE_MIN}.
  */
-export function reviewDraft(text: string | null, sources: MediaDraftSource[]): MediaDraftReview {
+export function reviewDraft(
+  text: string | null,
+  sources: MediaDraftSource[],
+  options: { confidenceMin?: number } = {},
+): MediaDraftReview {
+  const confidenceMin = options.confidenceMin ?? DRAFT_CONFIDENCE_MIN;
   const body = text?.trim() ?? "";
   const cited = extractCitationIds(body);
   const known = new Set(sources.map((source) => source.chunkId));
@@ -454,8 +462,8 @@ export function reviewDraft(text: string | null, sources: MediaDraftSource[]): M
       detail:
         confidence === null
           ? "Passage similarity was not recorded; gate skipped."
-          : `Weakest source passage is ${confidence.toFixed(2)} (minimum ${DRAFT_CONFIDENCE_MIN.toFixed(2)}).`,
-      passed: confidence === null || confidence >= DRAFT_CONFIDENCE_MIN,
+          : `Weakest source passage is ${confidence.toFixed(2)} (minimum ${confidenceMin.toFixed(2)}).`,
+      passed: confidence === null || confidence >= confidenceMin,
       severity: "gate",
     },
   ];

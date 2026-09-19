@@ -204,6 +204,20 @@ test("a weak passage similarity fails the confidence gate", () => {
   expect(review.passed).toBe(false);
 });
 
+test("the confidence gate accepts an operator-set threshold", () => {
+  const relaxed = reviewDraft("Inflation was 3.2% [cpi-index#4].", [source(0.82)], {
+    confidenceMin: 0.8,
+  });
+  expect(relaxed.checks.find((check) => check.id === "confidence")?.passed).toBe(true);
+  expect(relaxed.passed).toBe(true);
+
+  const strict = reviewDraft("Inflation was 3.2% [cpi-index#4].", [source(0.9)], {
+    confidenceMin: 0.95,
+  });
+  expect(strict.checks.find((check) => check.id === "confidence")?.passed).toBe(false);
+  expect(strict.passed).toBe(false);
+});
+
 test("missing similarity leaves the confidence gate passing with a note", () => {
   const review = reviewDraft("Inflation was 3.2% [cpi-index#4].", [source()]);
   const check = review.checks.find((item) => item.id === "confidence");

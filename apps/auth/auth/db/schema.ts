@@ -283,3 +283,28 @@ export const aiToolUsage = pgView("ai_tool_usage").as((qb) =>
     .from(aiSpans)
     .where(eq(aiSpans.kind, "tool")),
 );
+
+// ---------------------------------------------------------------------------
+// AI governance settings (singleton)
+//
+// One operator-editable row read by every enforcement point: the draft gate's
+// confidence floor, the agent's tool allowlist and the generation kill switch.
+// `policies` and `incident_response` are maintained copy for the governance page.
+// ---------------------------------------------------------------------------
+
+export const governanceSettings = pgTable("governance_settings", {
+  id: text("id").primaryKey().default("default"),
+  confidenceMin: numeric("confidence_min", { precision: 3, scale: 2 }).notNull().default("0.85"),
+  generationEnabled: boolean("generation_enabled").notNull().default(true),
+  enabledTools: jsonb("enabled_tools").$type<string[]>().notNull().default([]),
+  policies: jsonb("policies")
+    .$type<{ area: string; rule: string; enforcement: string }[]>()
+    .notNull()
+    .default([]),
+  incidentResponse: jsonb("incident_response").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by"),
+});
+
+export type GovernanceSettingsRow = typeof governanceSettings.$inferSelect;
+export type NewGovernanceSettingsRow = typeof governanceSettings.$inferInsert;

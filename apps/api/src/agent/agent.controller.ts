@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res } from "@nestjs/common"
 import type { Request, Response } from "express";
 import type { AuthUser } from "@voltedge/auth-contract";
 import type { ChatEvent, ChatRequest } from "@voltedge/agent-contract";
+import { GovernanceService } from "../admin/governance.service.ts";
 import { CurrentUser } from "../auth/current-user.decorator.ts";
 import { OptionalAuth } from "../auth/optional-auth.decorator.ts";
 import { Public } from "../auth/public.decorator.ts";
@@ -27,7 +28,10 @@ function requestOrigin(req: Request): string | undefined {
 
 @Controller("api")
 export class AgentController {
-  constructor(private readonly agent: AgentService) {}
+  constructor(
+    private readonly agent: AgentService,
+    private readonly governance: GovernanceService,
+  ) {}
 
   @Get("status")
   @Public()
@@ -49,6 +53,20 @@ export class AgentController {
     }
     if (!body.message || typeof body.message !== "string" || body.message.trim() === "") {
       res.status(400).json({ error: "message is required" });
+      return;
+    }
+
+    // Kill switch: the governance settings can disable all model generation. We answer
+    // on the normal SSE channel so the chat surface shows a clear message, not a hang.
+    if (!(await this.governance.isGenerationEnabled())) {
+      res.writeHead(200, SSE_HEADERS);
+      const blocked: ChatEvent = {
+        type: "error",
+        message: "AI generation is disabled by an administrator.",
+      };
+      res.write(`data: ${JSON.stringify(blocked)}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+      res.end();
       return;
     }
 

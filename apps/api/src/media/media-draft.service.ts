@@ -1,5 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { extractCitationIds, type MediaDraftSource } from "@voltedge/media-contract";
+import {
+  DRAFT_CONFIDENCE_MIN,
+  extractCitationIds,
+  type MediaDraftSource,
+} from "@voltedge/media-contract";
 import { AgentService } from "../agent/agent.service.ts";
 import { formatHits } from "../agent/rag/tool.ts";
 import { retrieve, type RagHit } from "../agent/rag/retrieve.ts";
@@ -88,6 +92,7 @@ export class MediaDraftService {
     claim: string,
     context: string | null,
     guidance: string | null = null,
+    confidenceMin: number = DRAFT_CONFIDENCE_MIN,
   ): Promise<MediaDraftResult> {
     const query = [claim, context, guidance].filter((part) => part?.trim()).join("\n\n");
 
@@ -106,6 +111,24 @@ export class MediaDraftService {
         gap: "No approved Stats SA source in the index covers this claim or question.",
         model: null,
       };
+    }
+
+    // Confidence-driven escalation: if no retrieved passage is a strong enough match,
+    // park the request for a human instead of drafting from a weak source. Passages
+    // without a recorded similarity (keyword-only hits) don't trigger the gate.
+    const recorded = hits
+      .map((hit) => hit.similarity)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    if (recorded.length > 0) {
+      const best = Math.max(...recorded);
+      if (best < confidenceMin) {
+        return {
+          text: null,
+          sources: [],
+          gap: `Retrieval confidence ${best.toFixed(2)} is below the escalation threshold ${confidenceMin.toFixed(2)}.`,
+          model: null,
+        };
+      }
     }
 
     const { text, model, error } = await this.agent.complete({
