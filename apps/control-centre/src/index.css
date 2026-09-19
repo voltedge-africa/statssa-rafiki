@@ -3,6 +3,8 @@
 @source "../../../packages/ui/src";
 @source "../../../packages/media-ui/src";
 @source "../../../packages/popia-ui/src";
+@source "../../../packages/ai-chat/src";
+@source "../../../packages/ai-chat/node_modules/streamdown/dist";
 @source "../src";
 
 ::selection {
