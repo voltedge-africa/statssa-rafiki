@@ -24,6 +24,7 @@ const hits = [
     page: null,
     text: "Access to improved sanitation rose to 84.0% in 2025.",
     score: 0.9,
+    similarity: 0.91,
   },
   {
     chunkId: 9,
@@ -34,6 +35,7 @@ const hits = [
     page: null,
     text: "A passage the model does not rely on.",
     score: 0.5,
+    similarity: 0.55,
   },
 ];
 
@@ -51,6 +53,27 @@ describe("MediaDraftService", () => {
     retrieveMock.mockReset();
     hasFactTablesMock.mockReset();
     hasFactTablesMock.mockResolvedValue(false);
+  });
+
+  it("escalates to a gap when retrieval confidence is below the threshold", async () => {
+    retrieveMock.mockResolvedValue([{ ...hits[0]!, similarity: 0.82 }]);
+    const { complete, service } = makeService();
+
+    const result = await service.generate("Did inflation fall to 2%?", null, null, 0.85);
+
+    expect(result.text).toBeNull();
+    expect(result.gap).toContain("confidence");
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("drafts when the best passage clears the threshold", async () => {
+    retrieveMock.mockResolvedValue(hits);
+    const { complete, service } = makeService();
+
+    const result = await service.generate("Did inflation fall to 2%?", null, null, 0.9);
+
+    expect(result.text).toContain("[cpi-index#4]");
+    expect(complete).toHaveBeenCalledTimes(1);
   });
 
   it("flags a gap without calling the model when no passage is relevant", async () => {
@@ -83,6 +106,7 @@ describe("MediaDraftService", () => {
     expect(result.text).toContain("[cpi-index#4]");
     expect(result.sources).toHaveLength(1);
     expect(result.sources[0]?.chunkId).toBe(4);
+    expect(result.sources[0]?.similarity).toBeCloseTo(0.91);
     expect(result.gap).toBeNull();
     expect(complete).toHaveBeenCalledTimes(1);
 

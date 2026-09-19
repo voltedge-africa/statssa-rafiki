@@ -112,6 +112,11 @@ export interface MediaQueueParams {
   q?: string;
 }
 
+/** The governance gate configuration the desk reads for its release checks. */
+export function getMediaPolicy() {
+  return request<{ confidenceMin: number }>("/requests/policy");
+}
+
 export function listMediaRequests(params: MediaQueueParams) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

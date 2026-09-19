@@ -9,6 +9,7 @@ import { useSession } from "./lib/session.tsx";
 import { AiTelemetryView } from "./views/ai-telemetry-view.tsx";
 import { CaseQueueView } from "./views/case-queue-view.tsx";
 import { CaseRequestView } from "./views/case-request-view.tsx";
+import { GovernanceView } from "./views/governance-view.tsx";
 import { MediaQueueView } from "./views/media-queue-view.tsx";
 import { MediaRequestView } from "./views/media-request-view.tsx";
 
@@ -44,16 +45,23 @@ export function App() {
   const caseReference = caseReferenceFromPath(path);
   const onMediaDesk = path === "/media" || mediaReference !== null;
   const onAiGovernance = path === "/ai";
+  const onGovernance = path === "/governance";
 
-  const title = onMediaDesk ? "Media desk" : onAiGovernance ? "AI Governance" : "POPIA case queue";
+  const title = onMediaDesk
+    ? "Media desk"
+    : onGovernance || onAiGovernance
+      ? "AI Governance"
+      : "POPIA case queue";
   const subtitle =
     mediaReference ??
     caseReference ??
     (onMediaDesk
       ? "media fact-check review"
-      : onAiGovernance
-        ? "model & tool telemetry"
-        : "staff & admin workspace");
+      : onGovernance
+        ? "policy, controls & model posture"
+        : onAiGovernance
+          ? "model & tool telemetry"
+          : "staff & admin workspace");
 
   return (
     <SidebarProvider>
@@ -74,6 +82,8 @@ export function App() {
             <MediaQueueView />
           ) : caseReference ? (
             <CaseRequestView reference={caseReference} />
+          ) : onGovernance ? (
+            <GovernanceView />
           ) : onAiGovernance ? (
             <AiTelemetryView />
           ) : (

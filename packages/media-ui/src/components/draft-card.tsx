@@ -1,5 +1,5 @@
 import { PlainMarkdown } from "@voltedge/ai-chat/components/plain-markdown";
-import type { MediaAiDraft } from "@voltedge/media-contract";
+import { DRAFT_CONFIDENCE_MIN, type MediaAiDraft } from "@voltedge/media-contract";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@voltedge/ui";
 
 import { formatDateTime } from "../format.ts";
@@ -55,6 +55,19 @@ export function DraftCard({
           >
             AI-generated · not approved
           </Badge>
+          {draft.confidence === null ? null : (
+            <Badge
+              variant="outline"
+              className={
+                draft.confidence >= DRAFT_CONFIDENCE_MIN
+                  ? "border-transparent bg-emerald-500/15 font-mono text-[10px] tracking-wide text-emerald-700 uppercase dark:text-emerald-400"
+                  : "border-transparent bg-amber-500/15 font-mono text-[10px] tracking-wide text-amber-700 uppercase dark:text-amber-400"
+              }
+              title={`Weakest cited passage similarity (minimum ${DRAFT_CONFIDENCE_MIN.toFixed(2)})`}
+            >
+              confidence {draft.confidence.toFixed(2)}
+            </Badge>
+          )}
         </CardTitle>
         <CardDescription>
           Prepared from approved Stats SA sources

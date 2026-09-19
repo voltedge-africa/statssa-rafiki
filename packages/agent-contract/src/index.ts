@@ -6,6 +6,22 @@
  * spans cannot drift.
  */
 
+import {
+  array,
+  boolean,
+  maxLength,
+  maxValue,
+  minLength,
+  minValue,
+  number,
+  object,
+  optional,
+  pipe,
+  string,
+  trim,
+  type InferOutput,
+} from "valibot";
+
 /* -------------------------------------------------------------------------- */
 /* Chat transport                                                             */
 /* -------------------------------------------------------------------------- */
@@ -269,6 +285,70 @@ export interface AiUsageSummary {
   byRole: AiUsageBucket[];
   byDay: AiUsageBucket[];
 }
+
+/* -------------------------------------------------------------------------- */
+/* AI governance settings                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** One enforceable control, as shown and edited on the governance page. */
+export interface GovernancePolicy {
+  area: string;
+  rule: string;
+  enforcement: string;
+}
+
+/**
+ * The operator-tunable AI governance settings. Persisted once and read by every
+ * enforcement point: the draft gate reads `confidenceMin`, the agent filters its
+ * tool registry by `enabledTools`, and chat/media generation honour
+ * `generationEnabled` as a kill switch. `policies` and `incidentResponse` are
+ * maintained copy.
+ */
+export interface GovernanceSettings {
+  /** Weakest passage similarity a draft may rest on before it escalates. */
+  confidenceMin: number;
+  /** False is a kill switch: chat and draft generation are disabled. */
+  generationEnabled: boolean;
+  /** Tools the agent may call; anything omitted is not offered to the model. */
+  enabledTools: string[];
+  policies: GovernancePolicy[];
+  incidentResponse: string[];
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** `GET /admin/governance` payload: the settings plus the tool catalogue. */
+export interface GovernanceSettingsResponse {
+  settings: GovernanceSettings;
+  availableTools: string[];
+}
+
+const boundedText = (limit: number) =>
+  pipe(
+    string(),
+    trim(),
+    minLength(1, "Required."),
+    maxLength(limit, `Use ${limit} characters or fewer.`),
+  );
+
+/** Body of `PATCH /admin/governance` (Admin). Every field is optional. */
+export const governanceSettingsUpdateSchema = object({
+  confidenceMin: optional(pipe(number(), minValue(0), maxValue(1))),
+  generationEnabled: optional(boolean()),
+  enabledTools: optional(array(pipe(string(), trim(), maxLength(80)))),
+  policies: optional(
+    array(
+      object({
+        area: boundedText(80),
+        rule: boundedText(200),
+        enforcement: boundedText(500),
+      }),
+    ),
+  ),
+  incidentResponse: optional(array(boundedText(500))),
+});
+
+export type GovernanceSettingsUpdateInput = InferOutput<typeof governanceSettingsUpdateSchema>;
 
 /* -------------------------------------------------------------------------- */
 /* Retrieval                                                                  */

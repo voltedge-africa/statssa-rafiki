@@ -119,6 +119,12 @@ export class MediaController {
     return this.media.listForStaff(filters, user);
   }
 
+  /** The gate configuration the desk needs (confidence floor). Any signed-in account. */
+  @Get("policy")
+  policy() {
+    return this.media.policy();
+  }
+
   @Get(":reference")
   @Roles("Staff", "Admin")
   async detail(@Param("reference") reference: string) {

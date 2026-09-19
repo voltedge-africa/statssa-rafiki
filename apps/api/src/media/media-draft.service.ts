@@ -1,6 +1,7 @@
-import { Inject, Injectable, Logger, forwardRef } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
+  DRAFT_CONFIDENCE_MIN,
   extractCitationIds,
   extractFactstoreTables,
   type MediaDraftSource,
@@ -49,6 +50,7 @@ function toSource(hit: RagHit): MediaDraftSource {
     source: hit.source,
     title: hit.title,
     snippet: hit.text.slice(0, 240),
+    ...(hit.similarity === undefined ? {} : { similarity: hit.similarity }),
   };
 }
 
@@ -111,15 +113,13 @@ function buildUserPrompt(
 export class MediaDraftService {
   private readonly logger = new Logger(MediaDraftService.name);
 
-  constructor(
-    @Inject(forwardRef(() => AgentService))
-    private readonly agent: AgentService,
-  ) {}
+  constructor(private readonly agent: AgentService) {}
 
   async generate(
     claim: string,
     context: string | null,
     guidance: string | null = null,
+    confidenceMin: number = DRAFT_CONFIDENCE_MIN,
   ): Promise<MediaDraftResult> {
     const query = [claim, context, guidance].filter((part) => part?.trim()).join("\n\n");
 
@@ -147,6 +147,24 @@ export class MediaDraftService {
         gap: "No approved Stats SA source in the index covers this claim or question.",
         model: null,
       };
+    }
+
+    // Confidence-driven escalation: if no retrieved passage is a strong enough match,
+    // park the request for a human instead of drafting from a weak source. Passages
+    // without a recorded similarity (keyword-only hits) don't trigger the gate.
+    const recorded = hits
+      .map((hit) => hit.similarity)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    if (recorded.length > 0) {
+      const best = Math.max(...recorded);
+      if (best < confidenceMin) {
+        return {
+          text: null,
+          sources: [],
+          gap: `Retrieval confidence ${best.toFixed(2)} is below the escalation threshold ${confidenceMin.toFixed(2)}.`,
+          model: null,
+        };
+      }
     }
 
     const { text, model, error } = await this.agent.complete({

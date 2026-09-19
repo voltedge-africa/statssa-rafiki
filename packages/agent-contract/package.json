@@ -19,6 +19,9 @@
     "check": "vp check",
     "prepare": "vp pack"
   },
+  "dependencies": {
+    "valibot": "^1.5.0"
+  },
   "devDependencies": {
     "@types/node": "^26.1.1",
     "typescript": "~6.0.2",

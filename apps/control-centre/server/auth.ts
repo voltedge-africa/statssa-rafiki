@@ -27,6 +27,7 @@ const API_PREFIXES: Record<string, string> = {
   "/api/media": "/media",
   "/api/rag": "/api/rag",
   "/api/admin/ai": "/admin/ai",
+  "/api/admin/governance": "/admin/governance",
 };
 
 const ACCESS_MAX_AGE = 60 * 60 * 24 * 30;

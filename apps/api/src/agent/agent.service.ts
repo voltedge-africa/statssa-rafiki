@@ -5,6 +5,7 @@ import { createModels, type AssistantMessage, type Model } from "@earendil-works
 import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go";
 import type { SpanAttributes } from "@earendil-works/pi-telemetry";
 import type { AgentStatus, ChatEvent, ChatRequest } from "@voltedge/agent-contract";
+import { GovernanceService } from "../admin/governance.service.ts";
 import { hasProviderKey, MODEL, PROVIDER } from "./config.ts";
 import { guardedFetch } from "./offline.ts";
 import { SpanHandle, TelemetryService } from "./telemetry.service.ts";
@@ -122,7 +123,10 @@ export class AgentService implements OnModuleInit {
   private catalog: ReturnType<typeof createModels> | undefined;
   private readonly sessions = new Map<string, Agent>();
 
-  constructor(private readonly telemetry: TelemetryService) {}
+  constructor(
+    private readonly telemetry: TelemetryService,
+    private readonly governance: GovernanceService,
+  ) {}
 
   onModuleInit(): void {
     void this.warmUp();
@@ -303,7 +307,7 @@ export class AgentService implements OnModuleInit {
     return { text: text.trim(), model: label, ...(failure ? { error: failure } : {}) };
   }
 
-  private buildAgent(sessionId: string): Agent {
+  private async buildAgent(sessionId: string): Promise<Agent> {
     const collection = this.models();
     const model = this.resolveModel();
 
@@ -319,18 +323,24 @@ export class AgentService implements OnModuleInit {
         },
       });
 
+    // The governance allowlist is applied when a session is built, so a tool that is
+    // switched off is simply not offered to the model. Existing sessions keep their
+    // tools until they are reset; new sessions pick up the change immediately.
+    const enabled = new Set(await this.governance.enabledTools());
+    const tools = TOOLS.filter((tool) => enabled.has(tool.name));
+
     return new Agent({
       sessionId,
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model,
-        tools: TOOLS as AgentTool<any, any>[],
+        tools: tools as AgentTool<any, any>[],
       },
       streamFn,
     });
   }
 
-  private getSession(sessionId: string): Agent {
+  private async getSession(sessionId: string): Promise<Agent> {
     const existing = this.sessions.get(sessionId);
     if (existing) {
       this.sessions.delete(sessionId);
@@ -338,7 +348,7 @@ export class AgentService implements OnModuleInit {
       return existing;
     }
 
-    const agent = this.buildAgent(sessionId);
+    const agent = await this.buildAgent(sessionId);
     this.sessions.set(sessionId, agent);
 
     while (this.sessions.size > MAX_SESSIONS) {
@@ -363,7 +373,7 @@ export class AgentService implements OnModuleInit {
     onEvent: (event: ChatEvent) => void,
     origin?: TelemetryOrigin,
   ): Promise<void> {
-    const agent = this.getSession(request.sessionId);
+    const agent = await this.getSession(request.sessionId);
 
     if (agent.state.isStreaming) {
       onEvent({ type: "error", message: "This session is already generating a response." });
