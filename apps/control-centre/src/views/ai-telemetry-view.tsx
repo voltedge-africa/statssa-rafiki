@@ -6,7 +6,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { RefreshCw } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 
 import type {
   AiModelCall,
@@ -33,6 +33,12 @@ import {
   Field,
   FieldLabel,
   Input,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
   Spinner,
   Table,
   TableBody,
@@ -53,6 +59,7 @@ import {
   listAiModelCalls,
   listAiToolCalls,
 } from "../lib/ai-telemetry-api.ts";
+import { formatCost, formatInt, formatMs, formatTime } from "../lib/format.ts";
 import { useSession } from "../lib/session.tsx";
 
 const PAGE_SIZE = 25;
@@ -79,31 +86,6 @@ const FEATURES = [
 ] as const;
 
 const ROLES = ["", "Press", "Staff", "Admin", "anonymous"] as const;
-
-const integerFormat = new Intl.NumberFormat("en-ZA");
-
-function formatInt(value: number | null | undefined): string {
-  return value === null || value === undefined ? "—" : integerFormat.format(value);
-}
-
-function formatCost(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  if (value === 0) return "$0";
-  return `$${value.toFixed(value < 0.01 ? 4 : 2)}`;
-}
-
-function formatMs(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  if (value === 0) return "0 ms";
-  return value >= 1000 ? `${(value / 1000).toFixed(1)} s` : `${Math.round(value)} ms`;
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("en-ZA", { dateStyle: "short", timeStyle: "medium" });
-}
 
 function featureLabel(feature: string | null): string {
   if (!feature) return "—";
@@ -306,6 +288,7 @@ export function AiTelemetryView() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [applied, setApplied] = useState<AiUsageFilters>({});
   const [reload, setReload] = useState(0);
+  const [queryOpen, setQueryOpen] = useState(false);
 
   const [summary, setSummary] = useState<AiUsageSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -428,6 +411,7 @@ export function AiTelemetryView() {
     setModelOffset(0);
     setToolOffset(0);
     setApplied(filtersFrom(form));
+    setQueryOpen(false);
   }
 
   function handleReset() {
@@ -464,28 +448,43 @@ export function AiTelemetryView() {
 
   return (
     <section className="flex flex-col gap-6">
-      <form onSubmit={handleSubmit}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Query telemetry</CardTitle>
-            <CardDescription>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <span className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
+            AI Governance
+          </span>
+          <h1 className="font-heading text-2xl font-medium">Telemetry</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={() => setQueryOpen(true)}>
+            <SlidersHorizontal />
+            Query telemetry
+          </Button>
+          <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
+            <span>{formatInt(summary?.totals.requests)} model requests</span>
+            <button
+              type="button"
+              className="underline-offset-4 hover:underline"
+              onClick={() => setReload((value) => value + 1)}
+            >
+              refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <Sheet open={queryOpen} onOpenChange={setQueryOpen}>
+        <SheetContent side="right" className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Query telemetry</SheetTitle>
+            <SheetDescription>
               Filter persisted AI usage by date, model, tool, surface and portal role. Dates are
               inclusive; leave a field blank to ignore it.
-            </CardDescription>
-            <CardAction>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setReload((value) => value + 1)}
-              >
-                <RefreshCw />
-                Refresh
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-5">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            </SheetDescription>
+          </SheetHeader>
+
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4">
               <Field>
                 <FieldLabel htmlFor="ai-from">From</FieldLabel>
                 <Input id="ai-from" type="date" value={form.from} onChange={update("from")} />
@@ -532,7 +531,7 @@ export function AiTelemetryView() {
                   ))}
                 </Select>
               </Field>
-              <Field className="sm:col-span-2">
+              <Field>
                 <FieldLabel htmlFor="ai-session">Session id</FieldLabel>
                 <Input
                   id="ai-session"
@@ -543,15 +542,15 @@ export function AiTelemetryView() {
               </Field>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <SheetFooter className="flex-row gap-2">
               <Button type="submit">Run query</Button>
               <Button type="button" variant="outline" onClick={handleReset}>
                 Reset
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </form>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
       {summaryError ? (
         <Alert variant="destructive">
