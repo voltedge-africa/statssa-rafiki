@@ -87,11 +87,23 @@ Everything below was chosen because it rides on that existing surface and data.
   escalation-rate insight, capability allowlist, observed models, and the controls enforced
   in the pipeline. (`apps/control-centre/src/views/governance-view.tsx`,
   `components/app-sidebar.tsx`, `src/App.tsx`.)
-- Tests: contract gate/confidence behaviour (`packages/media-contract/tests/index.test.ts`)
-  and similarity carry-through (`apps/api/src/media/media-draft.service.spec.ts`).
+- **Operable governance settings** — the page is an admin control surface, not a report. One
+  persisted singleton (`governance_settings`, migration `0006`) backs four live controls via
+  `GET/PATCH /admin/governance`:
+  - the **confidence floor** is read by `MediaDraftService` (escalates weak retrieval to an
+    information gap) and by the desk gate via `GET /media/requests/policy`;
+  - the **tool allowlist** filters the agent's registry when a session is built;
+  - **generation** is a kill switch: chat answers on the SSE channel with a disabled message
+    and media drafting parks as an information gap;
+  - **policies** and **incident response** are maintained, persisted copy.
+    (`apps/api/src/admin/governance.{defaults,repository,service,controller,module}.ts`,
+    `packages/agent-contract/src/index.ts`, `apps/auth/auth/db/schema.ts`.)
+- Tests: contract gate/confidence behaviour (`packages/media-contract/tests/index.test.ts`),
+  the governance update schema (`packages/agent-contract/tests/index.test.ts`), draft
+  escalation (`apps/api/src/media/media-draft.service.spec.ts`) and similarity carry-through.
 
 Deliberately **not** built here: two-tier brief, templates, isiZulu, KB upload, audit
-console, response reuse, live kill switch. Each needs an API shape decision, not just UI.
+console, response reuse.
 
 ## 5. Open questions
 
