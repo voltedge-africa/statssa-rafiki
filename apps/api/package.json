@@ -25,6 +25,8 @@
     "@openauthjs/openauth": "^0.4.3",
     "@voltedge/agent-contract": "workspace:*",
     "@voltedge/auth-contract": "workspace:*",
+    "@voltedge/brief-contract": "workspace:*",
+    "@voltedge/gaps-contract": "workspace:*",
     "@voltedge/media-contract": "workspace:*",
     "@voltedge/popia-contract": "workspace:*",
     "postgres": "^3.4.9",

@@ -18,6 +18,7 @@
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
     "@voltedge/auth-contract": "workspace:*",
+    "@voltedge/brief-contract": "workspace:*",
     "@voltedge/media-contract": "workspace:*",
     "@voltedge/popia-contract": "workspace:*",
     "drizzle-orm": "^0.45.2",

@@ -20,12 +20,15 @@ const CHALLENGE_COOKIE = "control_challenge";
 // Browser calls to these prefixes are proxied to the API with the session's access token
 // attached, so tokens stay in httpOnly cookies and the browser never talks to the API
 // cross-origin. `/api/popia` carries the POPIA desk, `/api/media` the media desk,
-// `/api/rag` the indexed documents a fact-check reference opens and `/api/admin/ai` the
+// `/api/rag` the indexed documents a fact-check reference opens, `/api/analysis` the
+// content-analysis briefs, `/api/gaps` the knowledge-gap log and `/api/admin/ai` the
 // Admin-only AI governance telemetry.
 const API_PREFIXES: Record<string, string> = {
   "/api/popia": "/popia",
   "/api/media": "/media",
   "/api/rag": "/api/rag",
+  "/api/analysis": "/analysis",
+  "/api/gaps": "/gaps",
   "/api/admin/ai": "/admin/ai",
   "/api/admin/governance": "/admin/governance",
 };

@@ -6,7 +6,7 @@ criteria — written to answer "what can we put in the control-centre now", not 
 we rebuild".
 
 - Date: 2026-09-19
-- Status: research / draft — the viable bundle has been partially implemented (see §4).
+- Status: research / draft — the viable bundle has been implemented, plus content analysis and the knowledge-gap log (see §4).
 
 Docs convention: this repo has one research note (`docs/research/media-portal-inquiry-feed.md`);
 this file follows it, citing claims as `path:LINE` and grouping sources at the end.
@@ -35,7 +35,7 @@ either implements the requirement or proves it is absent. No requirement was tak
 | —            | Automated post-generation enforcement gate             | **Missing → implemented**           | new `reviewDraft` gate (§4)                                                                                                                                                                                  |
 | FR-02/BR-03  | Mandatory multi-citation grounding                     | **Done**                            | `extractCitationIds` (`packages/media-contract/src/index.ts:327`)                                                                                                                                            |
 | FR-06        | Information-gap flagging, no silent failure            | **Done**                            | `information_gap` status + `aiGap` message (`apps/api/src/media/media.service.ts:550`)                                                                                                                       |
-| FR-12        | Intelligent document analysis for comms                | **Partial**                         | `DocumentPreview` opens a cited passage (`packages/ai-chat/src/components/document-preview.tsx`)                                                                                                             |
+| FR-12        | Intelligent document analysis for comms                | **Done**                            | `/analysis` briefs with scoped retrieval, fact-store tool, citation grounding and number verification (`apps/api/src/analysis/`; `packages/brief-contract/src/index.ts`)                                     |
 | NFR-02       | Web deployment, widget/chat/API                        | **Done**                            | public portal + API; no embeddable widget yet                                                                                                                                                                |
 | BR-01/BR-04  | Hard lock on publish                                   | **Done**                            | only the approve endpoint transitions to `approved`                                                                                                                                                          |
 | BR-11/NFR-03 | RBAC across Public/Media/Comms/Admin                   | **Done**                            | `@Roles`/`RolesGuard` (`apps/api/src/auth/roles.guard.ts`), proxy gating per app                                                                                                                             |
@@ -101,9 +101,34 @@ Everything below was chosen because it rides on that existing surface and data.
 - Tests: contract gate/confidence behaviour (`packages/media-contract/tests/index.test.ts`),
   the governance update schema (`packages/agent-contract/tests/index.test.ts`), draft
   escalation (`apps/api/src/media/media-draft.service.spec.ts`) and similarity carry-through.
+- **Content-analysis briefs (FR-12)** — `/analysis` lists the indexed corpus, then generates a
+  persisted brief (key findings, key statistics, trends, insights, context) from a multi-document
+  scope. Retrieval runs once per review dimension, scoped to the selected sources (`retrieve()`
+  gained an optional `sources` filter); the governance confidence floor escalates weak retrieval
+  to a gap with no model call; the model sees only retrieved passages plus read-only fact-store
+  tools and must cite `[source#chunk]`/`[factstore:<table>]`; a JSON parse failure is a surfaced
+  error, not a saved brief. Numbers are verified against the passages and tool rows
+  (`AgentService.complete` now returns its tool ground truth) and the verification travels with
+  the brief. Briefs persist in `analysis_briefs` and reuse the media citation chips and document
+  preview. (`apps/api/src/analysis/`; `packages/brief-contract/`; migration `0007`.)
+- **Knowledge-gap log** — chat refusals and media `information_gap` requests are recorded as
+  ungrounded queries, embedded with the local model and clustered into topic categories by
+  cosine similarity (`gap_categories.centroid`, pgvector), so repeated asks about the same
+  uncovered subject land in one category. Categories get a deterministic label immediately,
+  upgraded by a bounded best-effort model label (`gap_label`); the `/gaps` control-centre page
+  shows the zero-filled daily series, surfaces, top categories, top outlets and a per-category
+  query drill-down. Chat gaps store no user identity (role and origin host only). Recording is
+  failure-tolerant: if the embedding model is unavailable the query is still logged,
+  uncategorised. (`apps/api/src/gaps/`; `packages/gaps-contract/`; migration `0007`.)
+- Tests for the new surfaces: brief schema/JSON extraction (`packages/brief-contract/tests/`),
+  gap schemas (`packages/gaps-contract/tests/`), the draft pipeline and verification
+  (`apps/api/src/analysis/analysis-draft.service.spec.ts`), gap clustering and summary assembly
+  (`apps/api/src/gaps/gaps.service.spec.ts`), labelling
+  (`apps/api/src/gaps/gaps.labelling.service.spec.ts`) and role-gated HTTP routes
+  (`apps/api/test/analysis.e2e-spec.ts`, `apps/api/test/gaps.e2e-spec.ts`).
 
-Deliberately **not** built here: two-tier brief, templates, isiZulu, KB upload, audit
-console, response reuse.
+Deliberately **not** built here: two-tier brief, house-style templates, isiZulu, KB upload,
+audit console, response reuse.
 
 ## 5. Open questions
 

@@ -2,18 +2,18 @@
 
 A Vite+ monorepo for the STATSSA Rafiki auth stack.
 
-| App                   | What it is                                                                                                                                                                          | Stack                                      |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `apps/auth`           | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`.                                      | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
-| `apps/api`            | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification, role guards, the POPIA request desk and durable AI telemetry.                           | NestJS (Express), pgvector, Vitest, Oxc    |
-| `apps/website`        | The public front-end. Signs users in through the issuer, serves the POPIA request desk at `/popia` (footer links only), and sends Staff/Admin to the control centre after sign-in.  | Vite (React SPA), Node middleware          |
-| `apps/public-portal`  | The public chat portal on port 3003. Answers statistics questions from the API's RAG corpus. Linked from the website hero.                                                          | Vite (React SPA)                           |
-| `apps/media-portal`   | The media room on port 3004. Signed-in users file fact-check requests, watch them move through human review and read the approved, referenced response.                             | Vite (React SPA), Node middleware          |
-| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer, works the POPIA case queue, reviews media fact-check drafts and (Admins only) queries AI governance telemetry. | Vite (React SPA), Node middleware          |
+| App                   | What it is                                                                                                                                                                                                                                                          | Stack                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `apps/auth`           | OpenAuth issuer — a standalone auth server with email/password login and a Postgres-backed user store. Issues access tokens carrying a `role`.                                                                                                                      | Bun, Hono, OpenAuth, Drizzle ORM, Postgres |
+| `apps/api`            | NestJS API. Grounded chat agent over a local Stats SA corpus, plus JWKS token verification, role guards, the POPIA request desk, media fact-check drafting, content-analysis briefs, the knowledge-gap log and durable AI telemetry.                                | NestJS (Express), pgvector, Vitest, Oxc    |
+| `apps/website`        | The public front-end. Signs users in through the issuer, serves the POPIA request desk at `/popia` (footer links only), and sends Staff/Admin to the control centre after sign-in.                                                                                  | Vite (React SPA), Node middleware          |
+| `apps/public-portal`  | The public chat portal on port 3003. Answers statistics questions from the API's RAG corpus. Linked from the website hero.                                                                                                                                          | Vite (React SPA)                           |
+| `apps/media-portal`   | The media room on port 3004. Signed-in users file fact-check requests, watch them move through human review and read the approved, referenced response.                                                                                                             | Vite (React SPA), Node middleware          |
+| `apps/control-centre` | The Staff/Admin workspace on port 3006. Signs in through the issuer, works the POPIA case queue, reviews media fact-check drafts, analyses official content into cited comms briefs, reads the knowledge-gap log and (Admins only) queries AI governance telemetry. | Vite (React SPA), Node middleware          |
 
 Users register with one of three roles — **Press**, **Staff**, **Admin**. After signing in, **Press** lands on `/press`; **Staff** and **Admin** are redirected to the control centre (port 3006).
 
-The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums. The media vocabulary (fact-check statuses, lifecycle, draft and view shapes) lives once in [`packages/media-contract`](packages/media-contract) and is shared by the API, media portal, control centre and database enums. The agent vocabulary (chat events, UI blocks and AI telemetry spans) lives once in [`packages/agent-contract`](packages/agent-contract) and is shared by the API, the chat surfaces and the control centre's AI governance view.
+The token shape and roles live once in [`packages/auth-contract`](packages/auth-contract) and are shared by the issuer, website and API. The POPIA vocabulary (request types, statuses, lifecycle and view shapes) lives once in [`packages/popia-contract`](packages/popia-contract) and is shared by the API, website and database enums. The media vocabulary (fact-check statuses, lifecycle, draft and view shapes) lives once in [`packages/media-contract`](packages/media-contract) and is shared by the API, media portal, control centre and database enums. The agent vocabulary (chat events, UI blocks and AI telemetry spans) lives once in [`packages/agent-contract`](packages/agent-contract) and is shared by the API, the chat surfaces and the control centre's AI governance view. The content-analysis vocabulary (brief dimensions, schemas and view shapes) lives in [`packages/brief-contract`](packages/brief-contract), and the knowledge-gap vocabulary (ungrounded-query surfaces, category and summary shapes) in [`packages/gaps-contract`](packages/gaps-contract); both are shared by the API and the control centre.
 
 ---
 
@@ -340,6 +340,13 @@ its subject (`{ id, role }`) is validated against the shared contract.
 | `POST /media/requests/:reference/reject`     | Staff, Admin  | decline with a requester-visible reason                                                  |
 | `POST /media/requests/:reference/regenerate` | Staff, Admin  | rebuild the grounded draft                                                               |
 | `POST /media/requests/:reference/notes`      | Staff, Admin  | internal or requester-visible note                                                       |
+| `GET /analysis/documents`                    | Staff, Admin  | indexed official content the analysis builder can scope                                  |
+| `POST /analysis/briefs`                      | Staff, Admin  | generate and persist a cited analysis brief from selected documents                      |
+| `GET /analysis/briefs`                       | Staff, Admin  | saved briefs (`q`, `limit`, `offset`)                                                    |
+| `GET /analysis/briefs/:id`                   | Staff, Admin  | one saved brief with its references and verification                                     |
+| `GET /gaps/summary`                          | Staff, Admin  | knowledge-gap rollup (`days`)                                                            |
+| `GET /gaps/categories`                       | Staff, Admin  | categorised ungrounded queries (`q`, `limit`, `offset`)                                  |
+| `GET /gaps/categories/:id/queries`           | Staff, Admin  | the individual queries in one category                                                   |
 | `GET /api/status`                            | public        | provider/model availability                                                              |
 | `POST /api/chat`                             | public        | SSE chat stream (optional auth tags the portal role)                                     |
 | `POST /api/reset`                            | public        | forget a chat session                                                                    |
@@ -439,6 +446,35 @@ reference list in [`packages/media-ui`](packages/media-ui).
 
 ---
 
+## Content analysis and knowledge gaps
+
+Two adjacent surfaces in the control centre (port 3006, Staff/Admin) turn the same approved
+corpus and published-table store into communications intelligence.
+
+**Analysis briefs** (`/analysis`) — select one or more indexed official documents (statistical
+releases, media releases, presentations, research publications), optionally set a focus, and
+generate a persisted brief covering key findings, key statistics, trends, insights and context.
+Retrieval runs first, one scoped probe per review dimension, so every dimension has evidence;
+the confidence floor escalates weak retrieval to a gap instead of drafting from it. The model
+sees only the retrieved passages and read-only fact-store lookups, and must cite each claim with
+`[source#chunk]` or `[factstore:<table>]`. Every number in the brief is checked against the
+retrieved passages and tool rows before the brief is saved, and the verification result is shown
+on the brief. Citations open the indexed document beside the article. Briefs live in
+`rafiki_auth.analysis_briefs`; the vocabulary and schemas are in
+[`packages/brief-contract`](packages/brief-contract).
+
+**Knowledge gaps** (`/gaps`) — every query the approved sources could not answer is logged:
+chat refusals from the public portal and `information_gap` media fact-check requests. Each query
+is embedded with the local retrieval model and clustered into a topic category (for example, a
+run of outlets asking about the same uncovered statistic lands in one category); Staff/Admin can
+read the rollup, filter by window and drill into the underlying queries. Categories carry a
+deterministic label immediately, upgraded by a best-effort model label. No user identity is
+stored for chat gaps (role and origin host only); media rows point at their request. Gap data
+lives in `rafiki_auth.gap_queries` + `gap_categories` (pgvector centroid); the vocabulary and
+schemas are in [`packages/gaps-contract`](packages/gaps-contract).
+
+---
+
 ## Quality checks
 
 ```bash
@@ -472,6 +508,8 @@ apps/
       admin/          # role-guarded ping + AI governance (usage / model / tool / session)
       auth/           # JWKS verification, guards, decorators
       agent/          # agent runtime, pi telemetry capture + persistence, RAG, admin queries
+      analysis/       # content-analysis brief generation, persistence and API
+      gaps/           # knowledge-gap log: recording, clustering, labelling and API
       popia/          # POPIA repository, service, controller
       media/          # media fact-check repository, service, AI draft service, controller
     test/             # Vitest e2e specs (supertest)
@@ -486,12 +524,14 @@ apps/
     src/App.tsx       # media room routing
     src/views/        # home, file a request, my requests, tracking
   control-centre/
-    server/auth.ts    # OAuth flow, session cookies, /api/popia, /api/media and /api/admin/ai proxy
+    server/auth.ts    # OAuth flow, session cookies, /api/popia, /api/media, /api/analysis, /api/gaps and /api/admin/ai proxy
     src/main.tsx      # Staff/Admin workspace
-    src/views/        # POPIA case queue, media fact-check queue and AI governance telemetry
+    src/views/        # POPIA case queue, media fact-check queue, analysis briefs, knowledge gaps and AI governance telemetry
 packages/
   agent-contract/     # chat events, UI blocks and AI telemetry spans (shared)
   auth-contract/      # roles + access-token subject schema (shared)
+  brief-contract/     # content-analysis brief dimensions, schemas and view shapes (shared)
+  gaps-contract/      # knowledge-gap surfaces, category and summary shapes (shared)
   popia-contract/     # POPIA types, statuses, schemas and view shapes (shared)
   popia-ui/           # POPIA API client and request components (shared)
   media-contract/     # media fact-check statuses, schemas and view shapes (shared)

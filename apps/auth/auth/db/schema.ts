@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   uuid,
+  vector,
 } from "drizzle-orm/pg-core";
 import { eq } from "drizzle-orm";
 import {
@@ -18,6 +19,7 @@ import {
   MEDIA_EVENT_VISIBILITIES,
   MEDIA_REQUEST_STATUSES,
 } from "@voltedge/media-contract";
+import type { AnalysisBriefContent, AnalysisBriefSource } from "@voltedge/brief-contract";
 import {
   POPIA_EVENT_KINDS,
   POPIA_EVENT_VISIBILITIES,
@@ -308,3 +310,89 @@ export const governanceSettings = pgTable("governance_settings", {
 
 export type GovernanceSettingsRow = typeof governanceSettings.$inferSelect;
 export type NewGovernanceSettingsRow = typeof governanceSettings.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Content-analysis briefs
+//
+// A persisted, cited brief generated from selected indexed documents. The
+// brief itself is jsonb (validated against @voltedge/brief-contract before it
+// is written); references carry the passage/table provenance for audit.
+// ---------------------------------------------------------------------------
+
+export const briefVerificationStatusEnum = pgEnum("brief_verification_status", [
+  "verified",
+  "unverified",
+  "skipped",
+]);
+
+export const analysisBriefs = pgTable(
+  "analysis_briefs",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    sources: jsonb("sources").$type<string[]>().notNull(),
+    focus: text("focus"),
+    content: jsonb("content").$type<AnalysisBriefContent | null>(),
+    references: jsonb("references").$type<AnalysisBriefSource[]>().notNull().default([]),
+    verificationStatus: briefVerificationStatusEnum("verification_status")
+      .notNull()
+      .default("skipped"),
+    unverifiedNumbers: jsonb("unverified_numbers").$type<string[]>().notNull().default([]),
+    aiModel: text("ai_model"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdByLabel: text("created_by_label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("analysis_briefs_created_idx").on(table.createdAt)],
+);
+
+export type AnalysisBriefRow = typeof analysisBriefs.$inferSelect;
+export type NewAnalysisBriefRow = typeof analysisBriefs.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Knowledge-gap log
+//
+// Ungrounded queries from the public chat and the media fact-check desk, plus
+// the embedding-clustered categories they roll up into. No user identity is
+// stored: role and origin host only, and media rows point at their request.
+// The `vector` extension is enabled by the matching migration.
+// ---------------------------------------------------------------------------
+
+export const gapSurfaceEnum = pgEnum("gap_surface", ["chat", "media_draft"]);
+export const gapLabelSourceEnum = pgEnum("gap_label_source", ["auto", "model"]);
+
+export const gapCategories = pgTable("gap_categories", {
+  id: text("id").primaryKey(),
+  label: text("label").notNull(),
+  description: text("description"),
+  labelSource: gapLabelSourceEnum("label_source").notNull().default("auto"),
+  centroid: vector("centroid", { dimensions: 384 }),
+  queryCount: integer("query_count").notNull().default(0),
+  firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().defaultNow(),
+  lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const gapQueries = pgTable(
+  "gap_queries",
+  {
+    id: text("id").primaryKey(),
+    categoryId: text("category_id").references(() => gapCategories.id, { onDelete: "set null" }),
+    surface: gapSurfaceEnum("surface").notNull(),
+    query: text("query").notNull(),
+    reference: text("reference"),
+    outlet: text("outlet"),
+    role: text("role"),
+    origin: text("origin"),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("gap_queries_created_idx").on(table.createdAt),
+    index("gap_queries_category_idx").on(table.categoryId),
+  ],
+);
+
+export type GapCategoryRow = typeof gapCategories.$inferSelect;
+export type NewGapCategoryRow = typeof gapCategories.$inferInsert;
+export type GapQueryRow = typeof gapQueries.$inferSelect;
+export type NewGapQueryRow = typeof gapQueries.$inferInsert;

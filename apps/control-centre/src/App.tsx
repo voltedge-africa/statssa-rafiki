@@ -4,11 +4,19 @@ import { SidebarInset, SidebarProvider, SidebarTrigger, Spinner } from "@voltedg
 
 import { AppSidebar } from "./components/app-sidebar.tsx";
 import { mediaPortalUrl, websiteUrl } from "./lib/env.ts";
-import { caseReferenceFromPath, mediaReferenceFromPath, usePath } from "./lib/router.ts";
+import {
+  briefIdFromPath,
+  caseReferenceFromPath,
+  mediaReferenceFromPath,
+  usePath,
+} from "./lib/router.ts";
 import { useSession } from "./lib/session.tsx";
 import { AiTelemetryView } from "./views/ai-telemetry-view.tsx";
+import { AnalysisBriefView } from "./views/analysis-brief-view.tsx";
+import { AnalysisView } from "./views/analysis-view.tsx";
 import { CaseQueueView } from "./views/case-queue-view.tsx";
 import { CaseRequestView } from "./views/case-request-view.tsx";
+import { GapsView } from "./views/gaps-view.tsx";
 import { GovernanceView } from "./views/governance-view.tsx";
 import { MediaQueueView } from "./views/media-queue-view.tsx";
 import { MediaRequestView } from "./views/media-request-view.tsx";
@@ -43,25 +51,40 @@ export function App() {
 
   const mediaReference = mediaReferenceFromPath(path);
   const caseReference = caseReferenceFromPath(path);
+  const briefId = briefIdFromPath(path);
+  const onAnalysis = path === "/analysis" || briefId !== null;
+  const onGaps = path === "/gaps";
   const onMediaDesk = path === "/media" || mediaReference !== null;
   const onAiGovernance = path === "/ai";
   const onGovernance = path === "/governance";
 
-  const title = onMediaDesk
-    ? "Media desk"
-    : onGovernance || onAiGovernance
-      ? "AI Governance"
-      : "POPIA case queue";
+  const title = briefId
+    ? "Analysis brief"
+    : onAnalysis
+      ? "Content analysis"
+      : onGaps
+        ? "Knowledge gaps"
+        : onMediaDesk
+          ? "Media desk"
+          : onGovernance || onAiGovernance
+            ? "AI Governance"
+            : "POPIA case queue";
   const subtitle =
     mediaReference ??
     caseReference ??
-    (onMediaDesk
-      ? "media fact-check review"
-      : onGovernance
-        ? "policy, controls & model posture"
-        : onAiGovernance
-          ? "model & tool telemetry"
-          : "staff & admin workspace");
+    (briefId
+      ? briefId
+      : onAnalysis
+        ? "cited briefs from official content"
+        : onGaps
+          ? "what the corpus cannot answer"
+          : onMediaDesk
+            ? "media fact-check review"
+            : onGovernance
+              ? "policy, controls & model posture"
+              : onAiGovernance
+                ? "model & tool telemetry"
+                : "staff & admin workspace");
 
   return (
     <SidebarProvider>
@@ -86,6 +109,12 @@ export function App() {
             <GovernanceView />
           ) : onAiGovernance ? (
             <AiTelemetryView />
+          ) : briefId ? (
+            <AnalysisBriefView id={briefId} />
+          ) : onAnalysis ? (
+            <AnalysisView />
+          ) : onGaps ? (
+            <GapsView />
           ) : (
             <CaseQueueView />
           )}

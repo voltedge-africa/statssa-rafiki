@@ -118,6 +118,27 @@ export async function getDocument(
   };
 }
 
+/** A document as the analysis builder lists it: identity and size, not its text. */
+export interface IndexedDocumentSummary {
+  source: string;
+  title: string | null;
+  characters: number;
+  chunks: number;
+}
+
+/** Every indexed document, alphabetically by source. */
+export async function listDocuments(db: RagDatabase): Promise<IndexedDocumentSummary[]> {
+  return db<IndexedDocumentSummary[]>`
+    SELECT d.source AS source, d.title AS title,
+           char_length(d.text)::int AS characters,
+           COUNT(c.id)::int AS chunks
+    FROM documents d
+    LEFT JOIN chunks c ON c.document_id = d.id
+    GROUP BY d.id, d.source, d.title, char_length(d.text)
+    ORDER BY d.source
+  `;
+}
+
 /**
  * Insert or replace a document keyed by `source`. Returns false when the content
  * hash is unchanged, so re-ingesting an identical corpus is a no-op.
@@ -343,9 +364,12 @@ export async function keywordSearch(
   db: RagDatabase,
   terms: string[],
   limit: number,
+  sources?: string[],
 ): Promise<RagHit[]> {
   const query = buildTsQuery(terms);
   if (!query) return [];
+
+  const scope = sources && sources.length > 0 ? db`AND d.source IN ${db(sources)}` : db``;
 
   const rows = await db<KeywordRow[]>`
     SELECT c.id AS "chunkId", c.text AS text, c.heading AS heading, c.page AS page,
@@ -354,6 +378,7 @@ export async function keywordSearch(
     FROM chunks c
     JOIN documents d ON d.id = c.document_id
     WHERE c.tsv @@ to_tsquery('simple', ${query})
+    ${scope}
     ORDER BY rank DESC
     LIMIT ${limit}
   `;
@@ -375,13 +400,17 @@ export async function vectorSearch(
   embedding: Float32Array,
   limit: number,
   minSimilarity: number,
+  sources?: string[],
 ): Promise<RagHit[]> {
+  const scope = sources && sources.length > 0 ? db`WHERE d.source IN ${db(sources)}` : db``;
+
   const rows = await db<VectorRow[]>`
     SELECT c.id AS "chunkId", c.text AS text, c.heading AS heading, c.page AS page,
            d.id AS "documentId", d.source AS source,
            d.title AS title, c.embedding <=> ${vectorLiteral(embedding)}::vector AS distance
     FROM chunks c
     JOIN documents d ON d.id = c.document_id
+    ${scope}
     ORDER BY distance
     LIMIT ${limit}
   `;
@@ -415,13 +444,14 @@ export async function hybridSearch(
   query: string,
   embedding: Float32Array,
   k: number,
+  sources?: string[],
 ): Promise<RagHit[]> {
   const pool = Math.max(k * 4, 20);
   const terms = await discriminativeTerms(db, query);
   const minSimilarity = terms.length > 0 ? MIN_SIMILARITY : STRICT_SIMILARITY;
   const [keyword, vector] = await Promise.all([
-    keywordSearch(db, terms, pool),
-    vectorSearch(db, embedding, pool, minSimilarity),
+    keywordSearch(db, terms, pool, sources),
+    vectorSearch(db, embedding, pool, minSimilarity, sources),
   ]);
 
   if (keyword.length === 0 && vector.length === 0) return [];

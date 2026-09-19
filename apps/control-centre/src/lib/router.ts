@@ -29,3 +29,15 @@ export function caseReferenceFromPath(path: string): string | null {
   const match = normalizePath(path).match(/^\/cases\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]).toUpperCase() : null;
 }
+
+/** The analysis brief id for an `/analysis/:id` path, or null. */
+export function briefIdFromPath(path: string): string | null {
+  const match = normalizePath(path).match(/^\/analysis\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/** Move to an in-app path without a full page load. */
+export function navigate(path: string): void {
+  window.history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}

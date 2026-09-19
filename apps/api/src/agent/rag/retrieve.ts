@@ -16,10 +16,18 @@ function unavailable(error: unknown): Error {
   });
 }
 
-export async function retrieve(query: string, k: number = DEFAULT_TOP_K): Promise<RagHit[]> {
+/**
+ * Retrieve ranked passages. Pass `sources` to scope the search to specific
+ * indexed documents, e.g. the documents an analysis brief is built from.
+ */
+export async function retrieve(
+  query: string,
+  k: number = DEFAULT_TOP_K,
+  sources?: string[],
+): Promise<RagHit[]> {
   const embedding = await embedQuery(query);
   try {
-    return await hybridSearch(database(), query, embedding, k);
+    return await hybridSearch(database(), query, embedding, k, sources);
   } catch (error) {
     throw unavailable(error);
   }

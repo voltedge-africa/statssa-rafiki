@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { GovernanceModule } from "../admin/governance.module.ts";
+import { GapsLabellingService } from "../gaps/gaps.labelling.service.ts";
+import { GapsModule } from "../gaps/gaps.module.ts";
 import { AgentController } from "./agent.controller.ts";
 import { AgentService } from "./agent.service.ts";
 import { RagController } from "./rag.controller.ts";
@@ -9,9 +11,15 @@ import { TelemetryRepository } from "./telemetry.repository.ts";
 import { TelemetryService } from "./telemetry.service.ts";
 
 @Module({
-  imports: [GovernanceModule],
+  imports: [GovernanceModule, GapsModule],
   controllers: [AgentController, RagController, TelemetryController],
-  providers: [AgentService, TelemetryService, TelemetryRepository, TelemetryPersistenceService],
-  exports: [AgentService, TelemetryService, TelemetryRepository],
+  providers: [
+    AgentService,
+    TelemetryService,
+    TelemetryRepository,
+    TelemetryPersistenceService,
+    GapsLabellingService,
+  ],
+  exports: [AgentService, TelemetryService, TelemetryRepository, GapsLabellingService],
 })
 export class AgentModule {}

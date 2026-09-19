@@ -2,6 +2,8 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import type { AuthUser } from "@voltedge/auth-contract";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { GovernanceService } from "../admin/governance.service.ts";
+import type { GapsLabellingService } from "../gaps/gaps.labelling.service.ts";
+import type { GapsService } from "../gaps/gaps.service.ts";
 import type { MediaDraftResult } from "./media-draft.service.ts";
 import { MediaDraftService } from "./media-draft.service.ts";
 import { MediaService } from "./media.service.ts";
@@ -242,12 +244,16 @@ function makeService() {
   );
   const drafts = new FakeDraftService();
   const governance = new FakeGovernanceService();
+  const gaps = { record: vi.fn().mockResolvedValue(undefined) };
+  const labelling = { labelPending: vi.fn().mockResolvedValue(0) };
   const service = new MediaService(
     fake as unknown as MediaRepository,
     drafts as unknown as MediaDraftService,
     governance as unknown as GovernanceService,
+    gaps as unknown as GapsService,
+    labelling as unknown as GapsLabellingService,
   );
-  return { fake, drafts, governance, service };
+  return { fake, drafts, governance, gaps, labelling, service };
 }
 
 async function waitForStatus(fake: FakeRepository, status: string) {
@@ -306,6 +312,29 @@ describe("MediaService", () => {
     if (!stored) throw new Error("request not stored");
     expect(stored.aiDraft).toBeNull();
     expect(stored.aiGap).toContain("No approved Stats SA source");
+  });
+
+  it("logs an ungrounded media claim in the knowledge-gap log", async () => {
+    const built = makeService();
+    built.drafts.result = {
+      text: null,
+      sources: [],
+      gap: "No approved Stats SA source covers this claim.",
+      model: "test/model",
+    };
+
+    await built.service.submit(submission, press);
+    await waitForStatus(built.fake, "information_gap");
+
+    expect(built.gaps.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        surface: "media_draft",
+        query: submission.claim,
+        reference: expect.stringMatching(/^MEDIA-\d{4}-[A-Z0-9]{6}$/),
+        reason: "No approved Stats SA source covers this claim.",
+      }),
+    );
+    expect(built.labelling.labelPending).toHaveBeenCalled();
   });
 
   it("hides the AI draft from the requester and shows it to reviewers", async () => {

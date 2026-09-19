@@ -35,6 +35,8 @@ import {
 } from "@voltedge/media-contract";
 import { MediaDraftService, type MediaDraftResult } from "./media-draft.service.ts";
 import { GovernanceService } from "../admin/governance.service.ts";
+import { GapsLabellingService } from "../gaps/gaps.labelling.service.ts";
+import { GapsService } from "../gaps/gaps.service.ts";
 import {
   MediaRepository,
   type MediaEventRecord,
@@ -172,6 +174,8 @@ export class MediaService {
     private readonly repo: MediaRepository,
     private readonly drafts: MediaDraftService,
     private readonly governance: GovernanceService,
+    private readonly gaps: GapsService,
+    private readonly labelling: GapsLabellingService,
   ) {}
 
   /** The gate configuration the desk reads: the operator-set confidence floor. */
@@ -626,6 +630,22 @@ export class MediaService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+    }
+
+    if (result.gap) {
+      // The claim could not be answered from approved sources: log it for the
+      // knowledge-gap desk. Fire-and-forget — a log failure must not affect the
+      // requester's case, and the labelling sweep is best-effort.
+      void this.gaps
+        .record({
+          surface: "media_draft",
+          query: record.claim,
+          reference: record.reference,
+          outlet: record.outlet,
+          reason: result.gap,
+        })
+        .then(() => this.labelling.labelPending())
+        .catch(() => undefined);
     }
   }
 

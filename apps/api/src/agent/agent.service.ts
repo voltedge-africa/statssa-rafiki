@@ -13,6 +13,14 @@ import { TOOLS } from "./tools.ts";
 import { extractUiBlock } from "./ui/blocks.ts";
 import { collectToolGroundTruth, extractNumbers, verifyNumbers } from "./verifier.ts";
 
+/**
+ * The exact answer the system prompt mandates when the approved sources cannot
+ * support a response. Shared so the chat controller can detect a refusal and
+ * record it in the knowledge-gap log.
+ */
+export const REFUSAL_ANSWER =
+  "The provided Stats SA documentation does not contain this information.";
+
 export const SYSTEM_PROMPT = [
   "You are Rafiki, an assistant for Statistics South Africa (Stats SA).",
   "You answer every question through exactly one of two data pipelines, chosen by what the question asks for.",
@@ -34,7 +42,7 @@ export const SYSTEM_PROMPT = [
   "NEGATIVE REJECTION (applies to both pipelines):",
   "Do not refuse without evidence: call search_statssa, and query_factstore when a relevant table exists, before deciding the material is missing.",
   "If the retrieved passages do not explicitly contain the facts needed to answer the question, or query_factstore returns no rows, output exactly:",
-  '"The provided Stats SA documentation does not contain this information."',
+  JSON.stringify(REFUSAL_ANSWER),
   "and nothing else.",
   "Never extrapolate, interpolate, guess, infer missing values, or answer from general knowledge or training data.",
   "",
@@ -109,6 +117,12 @@ function usageAttributes(message: AssistantMessage, stats: AssistantStats): Span
       ? {}
       : { "pi.ai.stream.time_to_first_chunk_ms": stats.firstChunkAt - stats.startedAt }),
   };
+}
+
+/** What a chat turn produced, for callers that react after the SSE stream ends. */
+export interface ChatTurnResult {
+  /** True when the answer was the mandated information-gap refusal. */
+  refused: boolean;
 }
 
 /**
@@ -193,12 +207,19 @@ export class AgentService implements OnModuleInit {
     text: string;
     model: string;
     error?: string;
+    /** Numbers seen in tool results during the call — ground truth for verification. */
+    groundTruth: string[];
   }> {
     const model = this.resolveModel();
     const label = `${model.provider}/${model.id}`;
 
     if (!hasProviderKey()) {
-      return { text: "", model: label, error: `The ${PROVIDER.label} API key is not configured.` };
+      return {
+        text: "",
+        model: label,
+        error: `The ${PROVIDER.label} API key is not configured.`,
+        groundTruth: [],
+      };
     }
 
     const collection = this.models();
@@ -234,6 +255,7 @@ export class AgentService implements OnModuleInit {
     let firstChunkAt: number | undefined;
     let text = "";
     let failure: string | undefined;
+    const groundTruth = new Set<string>();
 
     const unsubscribe = agent.subscribe((event) => {
       if (event.type === "message_start" && event.message.role === "assistant") {
@@ -271,6 +293,12 @@ export class AgentService implements OnModuleInit {
         return;
       }
 
+      if (event.type === "tool_execution_end") {
+        const details = (event.result as { details?: unknown } | undefined)?.details;
+        collectToolGroundTruth(event.toolName, details, groundTruth);
+        return;
+      }
+
       if (event.type === "message_end" && event.message.role === "assistant" && assistantSpan) {
         const message = event.message as AssistantMessage;
         assistantSpan.setAttributes(
@@ -304,7 +332,12 @@ export class AgentService implements OnModuleInit {
       );
     }
 
-    return { text: text.trim(), model: label, ...(failure ? { error: failure } : {}) };
+    return {
+      text: text.trim(),
+      model: label,
+      ...(failure ? { error: failure } : {}),
+      groundTruth: [...groundTruth],
+    };
   }
 
   private async buildAgent(sessionId: string): Promise<Agent> {
@@ -372,13 +405,13 @@ export class AgentService implements OnModuleInit {
     request: ChatRequest,
     onEvent: (event: ChatEvent) => void,
     origin?: TelemetryOrigin,
-  ): Promise<void> {
+  ): Promise<ChatTurnResult> {
     const agent = await this.getSession(request.sessionId);
 
     if (agent.state.isStreaming) {
       onEvent({ type: "error", message: "This session is already generating a response." });
       onEvent({ type: "done" });
-      return;
+      return { refused: false };
     }
 
     const activeModel = agent.state.model;
@@ -533,6 +566,7 @@ export class AgentService implements OnModuleInit {
     });
 
     let failure: string | undefined;
+    let refused = false;
     try {
       await agent.prompt(request.message);
       failure = agent.state.errorMessage;
@@ -544,6 +578,7 @@ export class AgentService implements OnModuleInit {
             ? { status: "skipped" as const, unverified: [] as string[] }
             : verifyNumbers(answerText, groundTruthNumbers);
         onEvent({ type: "verification", ...verification });
+        refused = answerText.includes(REFUSAL_ANSWER);
       }
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
@@ -565,5 +600,7 @@ export class AgentService implements OnModuleInit {
       }
       onEvent({ type: "done" });
     }
+
+    return { refused };
   }
 }

@@ -6,6 +6,8 @@ import { GovernanceService } from "../admin/governance.service.ts";
 import { CurrentUser } from "../auth/current-user.decorator.ts";
 import { OptionalAuth } from "../auth/optional-auth.decorator.ts";
 import { Public } from "../auth/public.decorator.ts";
+import { GapsLabellingService } from "../gaps/gaps.labelling.service.ts";
+import { GapsService } from "../gaps/gaps.service.ts";
 import { AgentService, type TelemetryOrigin } from "./agent.service.ts";
 
 const SSE_HEADERS = {
@@ -31,6 +33,8 @@ export class AgentController {
   constructor(
     private readonly agent: AgentService,
     private readonly governance: GovernanceService,
+    private readonly gaps: GapsService,
+    private readonly labelling: GapsLabellingService,
   ) {}
 
   @Get("status")
@@ -88,7 +92,26 @@ export class AgentController {
     };
 
     try {
-      await this.agent.runChat({ sessionId: body.sessionId, message: body.message }, send, origin);
+      const { refused } = await this.agent.runChat(
+        { sessionId: body.sessionId, message: body.message },
+        send,
+        origin,
+      );
+      if (refused) {
+        // The query was answered with the mandated refusal, so the approved sources do
+        // not cover it: log it for the knowledge-gap desk. Fire-and-forget so a log
+        // failure can never affect the chat response.
+        void this.gaps
+          .record({
+            surface: "chat",
+            query: body.message,
+            role: user?.role ?? "anonymous",
+            origin: host ?? null,
+            reason: "The approved corpus and published tables did not cover the query.",
+          })
+          .then(() => this.labelling.labelPending())
+          .catch(() => undefined);
+      }
     } catch (error) {
       send({ type: "error", message: error instanceof Error ? error.message : String(error) });
       send({ type: "done" });

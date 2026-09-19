@@ -1,4 +1,13 @@
-import { ClipboardList, ExternalLink, LogOut, Newspaper, Scale, ShieldCheck } from "lucide-react";
+import {
+  BookOpenText,
+  ClipboardList,
+  ExternalLink,
+  FileSearch,
+  LogOut,
+  Newspaper,
+  Scale,
+  ShieldCheck,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -75,6 +84,34 @@ export function AppSidebar() {
                 >
                   <Newspaper />
                   <span>Fact-check queue</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Communications</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={path === "/analysis" || path.startsWith("/analysis/")}
+                  tooltip="Analysis briefs"
+                  render={<a href="/analysis" />}
+                >
+                  <BookOpenText />
+                  <span>Analysis briefs</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={path === "/gaps"}
+                  tooltip="Knowledge gaps"
+                  render={<a href="/gaps" />}
+                >
+                  <FileSearch />
+                  <span>Knowledge gaps</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
