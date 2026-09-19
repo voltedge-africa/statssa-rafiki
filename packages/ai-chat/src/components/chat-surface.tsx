@@ -8,7 +8,13 @@ import {
   SidebarTrigger,
   Spinner,
 } from "@voltedge/ui";
-import { ShieldAlertIcon, ShieldCheckIcon, SquarePenIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
+  SquarePenIcon,
+} from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -26,6 +32,8 @@ import { TelemetryPanel } from "./telemetry-panel.tsx";
 import { ToolRunView } from "./tool-run.tsx";
 import { useChat } from "../hooks/use-chat.ts";
 import { useTelemetry } from "../hooks/use-telemetry.ts";
+
+const VISIBLE_SUGGESTION_COUNT = 5;
 
 const DEFAULT_SUGGESTIONS = [
   "Chart household internet access by province in 2025 as a bar chart.",
@@ -72,6 +80,7 @@ export function ChatSurface({
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [telemetryOpen, setTelemetryOpen] = useState(false);
   const [previewSource, setPreviewSource] = useState<string | null>(null);
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
 
   useEffect(() => {
     if (!showTelemetry) return;
@@ -83,6 +92,10 @@ export function ChatSurface({
 
   const streaming = status === "streaming" || status === "submitted";
   const empty = messages.length === 0;
+  const hasHiddenSuggestions = suggestions.length > VISIBLE_SUGGESTION_COUNT;
+  const visibleSuggestions = showAllSuggestions
+    ? suggestions
+    : suggestions.slice(0, VISIBLE_SUGGESTION_COUNT);
 
   const composer = (
     <ChatComposer
@@ -165,7 +178,7 @@ export function ChatSurface({
                   </h2>
                 </div>
                 <Suggestions className="w-full flex-wrap justify-center whitespace-normal">
-                  {suggestions.map((suggestion) => (
+                  {visibleSuggestions.map((suggestion) => (
                     <Suggestion
                       key={suggestion}
                       suggestion={suggestion}
@@ -173,6 +186,23 @@ export function ChatSurface({
                       onClick={(value) => void send(value)}
                     />
                   ))}
+                  {hasHiddenSuggestions && (
+                    <Button
+                      aria-expanded={showAllSuggestions}
+                      className="h-auto gap-1 whitespace-normal rounded-full py-1.5 text-center leading-snug"
+                      onClick={() => setShowAllSuggestions((value) => !value)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {showAllSuggestions ? "See less" : "See more"}
+                      {showAllSuggestions ? (
+                        <ChevronUpIcon className="size-3.5" />
+                      ) : (
+                        <ChevronDownIcon className="size-3.5" />
+                      )}
+                    </Button>
+                  )}
                 </Suggestions>
                 {composer}
                 <p className="text-center text-xs text-muted-foreground">

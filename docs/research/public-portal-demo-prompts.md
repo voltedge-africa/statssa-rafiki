@@ -28,7 +28,8 @@ so a demo reproduces the same tool calls and the same figures every time.
 
 ## 2. The three sets
 
-Ordered as they appear in `SUGGESTIONS`; the portal renders all nine as chips.
+Ordered as they appear in `SUGGESTIONS`; the empty state shows the first five, with the rest behind a
+See more toggle.
 
 ### Set A — Fact store (exact figures, tables, charts)
 
@@ -73,10 +74,12 @@ Ordered as they appear in `SUGGESTIONS`; the portal renders all nine as chips.
 ## 4. Suggested demo flow
 
 - Full sweep: run Set A, then B, then C — structured data, then retrieval, then the trust layer.
-- Short version: A2 (chart), B1 (trend with citations), C3 (refusal).
+- Short version: A2 (chart), B1 (trend with citations), C3 (refusal — click See more first).
 - The chips are plain strings passed to `ChatSurface` (`apps/public-portal/src/main.tsx`); the layout
-  wraps them in the empty state (`packages/ai-chat/src/components/chat-surface.tsx:167-176`). The
-  shared `DEFAULT_SUGGESTIONS` are left as-is because the portal always overrides them.
+  wraps them in the empty state (`packages/ai-chat/src/components/chat-surface.tsx`). The empty state
+  shows five and puts the remainder behind a See more / See less toggle, so a presenter who wants a
+  later prompt clicks once before the demo. The shared `DEFAULT_SUGGESTIONS` are left as-is because
+  the portal always overrides them.
 - Keep each prompt under roughly 80 characters. A chip is a single flex item, so a much longer
   string overflows the row rather than wrapping (the first C2 draft did exactly that).
 
